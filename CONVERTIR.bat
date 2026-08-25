@@ -7,9 +7,9 @@ chcp 65001 >nul
 cd /d "%~dp0"
 where py >nul 2>nul
 if %errorlevel%==0 (
-    py -3 pdf_to_excel.py %*
+    py -3 "FACTURE CLIENT\pdf_to_excel.py" %*
 ) else (
-    python pdf_to_excel.py %*
+    python "FACTURE CLIENT\pdf_to_excel.py" %*
 )
 echo.
 pause
