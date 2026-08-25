@@ -1,13 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Conversion des factures PDF SALFA (BSA) en fichiers Excel selon le modèle
+Conversion des factures PDF SALFA (BSA, MCI, ...) en fichiers Excel selon le modèle
 "Modele_Import.xlsx" (feuille Modele_Prestations, 11 colonnes).
 
-Usage : python3 pdf_to_excel.py
-Entrée : FACTURE CLIENT/BSA *.pdf
-Sortie : FACTURE CLIENT/EXCEL/BSA <MOIS>.xlsx  +  fichier consolidé
+Usage :
+    python3 pdf_to_excel.py                # traite tous les clients trouvés (BSA, MCI, ...)
+    python3 pdf_to_excel.py MCI            # traite uniquement MCI
+    python3 pdf_to_excel.py MCI --force    # régénère même si le fichier Excel existe déjà
+
+Entrée : FACTURE CLIENT/<CLIENT> <MOIS>.pdf
+Sortie : FACTURE CLIENT/EXCEL/<CLIENT> <MOIS>.xlsx  +  fichier consolidé par client
+
+Les fichiers Excel déjà existants ne sont PAS écrasés (protection des modifications
+manuelles), sauf avec l'option --force.
 """
 import re
+import sys
 import glob
 import os
 import unicodedata
@@ -49,7 +57,12 @@ def parse_date(d):
 
 
 def parse_pdf(path):
-    """Extrait (facture, mois, lignes) d'un PDF. Chaque ligne = dict modèle."""
+    """Extrait (facture, mois, lignes) d'un PDF. Chaque ligne = dict modèle.
+
+    Gère les lignes de continuation : quand une ligne sans N° porte uniquement
+    des actes médicaux (coupure de page), ceux-ci sont rattachés à la ligne
+    précédente.
+    """
     with pdfplumber.open(path) as pdf:
         facture = mois = None
         raw_rows = []
@@ -64,11 +77,19 @@ def parse_pdf(path):
                     mois = unicodedata.normalize("NFC", m.group(1).strip())
             for table in page.extract_tables():
                 for row in table:
-                    if not row or not str(row[0] or "").strip():
-                        continue  # artefact de saut de page / ligne vide
-                    if str(row[0]).strip() in ("N°", "Total"):
+                    c0 = str(row[0] or "").strip()
+                    c4 = str(row[4] or "").strip()
+                    if c0 == "N°":
+                        continue  # en-tête de tableau
+                    if c0 == "Total" or c4 == "Total":
+                        continue  # ligne total (le libellé peut être en col 0 ou 4)
+                    if not c0:
+                        if c4 and raw_rows:
+                            # continuation inter-page : rattacher les actes à la ligne précédente
+                            prev = raw_rows[-1]
+                            prev[4] = (prev[4] or "") + "\n" + c4
                         continue
-                    raw_rows.append(row)
+                    raw_rows.append(list(row))
 
     lignes = []
     for row in raw_rows:
@@ -107,6 +128,9 @@ def parse_pdf(path):
         tm = amount_to_float(part)
         net_pay = amount_to_float(net)
 
+        # --- Société (préfixe du nom de fichier : BSA xxx.pdf -> BSA) ---
+        societe = os.path.basename(path).split(" ")[0].upper()
+
         # --- Observations ---
         obs = f"Facture mensuelle soins ambulatoires - {mois}"
         if abs(total_actes - brut) > 0.01:
@@ -117,7 +141,7 @@ def parse_pdf(path):
             "Date_Soins": parse_date(date),
             "Nom_Agent": nom_agent,
             "Matricule": str(matricule or "").strip(),
-            "Societe": "BSA",
+            "Societe": societe,
             "Sous_Societe": sous,
             "Acte_Medicale_Prix": actes_str,
             "Montant_Total_Brut": int(brut) if brut == int(brut) else brut,
@@ -155,11 +179,20 @@ def write_workbook(path, lignes):
     wb.save(path)
 
 
-def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
-    pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "BSA *.pdf")),
-                  key=lambda p: MONTH_ORDER.index(
-                      os.path.basename(p).replace("BSA ", "").replace(".pdf", "").upper()))
+def month_of(path):
+    """Nom du mois en majuscules à partir du nom de fichier '<CLIENT> <MOIS>.pdf'."""
+    return os.path.basename(path).rsplit(".", 1)[0].split(" ", 1)[1].upper()
+
+
+def process_client(societe, force=False):
+    """Convertit tous les PDF d'un client et produit le fichier consolidé."""
+    pattern = os.path.join(PDF_DIR, f"{societe} *.pdf")
+    pdfs = [p for p in glob.glob(pattern) if month_of(p) in MONTH_ORDER]
+    pdfs.sort(key=lambda p: MONTH_ORDER.index(month_of(p)))
+    if not pdfs:
+        print(f"!! Aucun PDF trouvé pour {societe} ({pattern})")
+        return
+
     toutes = []
     for pdf_path in pdfs:
         facture, mois, lignes = parse_pdf(pdf_path)
@@ -168,19 +201,47 @@ def main():
             continue
         stem = os.path.splitext(os.path.basename(pdf_path))[0]
         out = os.path.join(OUT_DIR, f"{stem}.xlsx")
-        write_workbook(out, lignes)
-        s_brut = sum(l["Montant_Total_Brut"] for l in lignes)
-        s_tm = sum(l["Ticket_Moderateur"] for l in lignes)
-        s_net = sum(l["Prise_En_Charge_Net"] for l in lignes)
-        print(f"OK {stem}.xlsx : {facture} | {mois} | {len(lignes)} lignes | "
-              f"Brut {s_brut:,} | TM {s_tm:,} | Net {s_net:,}".replace(",", " "))
-        for l in lignes:
-            l["Observations"] = l["Observations"]  # déjà renseigné
-        toutes.extend(lignes)
+        if os.path.exists(out) and not force:
+            print(f"-- {stem}.xlsx : déjà existant, non écrasé (utilisez --force pour régénérer)")
+        else:
+            write_workbook(out, lignes)
+            s_brut = sum(l["Montant_Total_Brut"] for l in lignes)
+            s_tm = sum(l["Ticket_Moderateur"] for l in lignes)
+            s_net = sum(l["Prise_En_Charge_Net"] for l in lignes)
+            print(f"OK {stem}.xlsx : {facture} | {mois} | {len(lignes)} lignes | "
+                  f"Brut {s_brut:,} | TM {s_tm:,} | Net {s_net:,}".replace(",", " "))
+        # pour le consolidé, relire le fichier réellement en place (garde les modif. manuelles)
+        if os.path.exists(out):
+            ws = load_workbook(out)["Modele_Prestations"]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if row[0] is None:
+                    continue
+                toutes.append(dict(zip(HEADERS, row)))
 
-    consolide = os.path.join(OUT_DIR, "BSA 2026 CONSOLIDE (Janvier-Juin).xlsx")
-    write_workbook(consolide, toutes)
-    print(f"OK {os.path.basename(consolide)} : {len(toutes)} lignes au total")
+    if not toutes:
+        print(f"!! {societe} : rien à consolider")
+        return
+    mois_premier = month_of(pdfs[0]).capitalize()
+    mois_dernier = month_of(pdfs[-1]).capitalize()
+    consolide = os.path.join(OUT_DIR, f"{societe} 2026 CONSOLIDE ({mois_premier}-{mois_dernier}).xlsx")
+    if os.path.exists(consolide) and not force:
+        print(f"-- {os.path.basename(consolide)} : déjà existant, non écrasé")
+    else:
+        write_workbook(consolide, toutes)
+        print(f"OK {os.path.basename(consolide)} : {len(toutes)} lignes au total")
+
+
+def main():
+    os.makedirs(OUT_DIR, exist_ok=True)
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv[1:]
+    if args:
+        clients = [a.upper() for a in args]
+    else:  # découverte automatique des clients (préfixes des PDF)
+        clients = sorted({os.path.basename(p).split(" ")[0].upper()
+                          for p in glob.glob(os.path.join(PDF_DIR, "*.pdf"))})
+    for societe in clients:
+        process_client(societe, force)
 
 
 if __name__ == "__main__":
