@@ -3,8 +3,8 @@
 Conversion des factures PDF SALFA en fichiers Excel selon le modèle
 "Modele_Import.xlsx" (feuille Modele_Prestations, 11 colonnes).
 
-Usage :
-    python pdf_to_excel.py            # convertit tous les PDF du dossier FACTURE CLIENT
+Usage (depuis le dossier FACTURE CLIENT) :
+    python pdf_to_excel.py            # convertit tous les PDF du dossier
     python pdf_to_excel.py MCI        # uniquement les factures détectées comme MCI
     python pdf_to_excel.py --force    # régénère même si le fichier Excel existe déjà
 
@@ -13,10 +13,11 @@ Chaque PDF est analysé et le fichier de sortie est nommé d'après son CONTENU 
     - Société  -> ligne "Doit : ..."            (1er mot, ex : BSA, MCI)
     - Mois     -> ligne "Mois de prise en charge : Juillet 2026"
     - Année    -> même ligne
-Sortie : FACTURE CLIENT/EXCEL/<SOCIETE> <MOIS> <ANNEE>.xlsx
-    exemple : FACTURE CLIENT/EXCEL/BSA JUILLET 2026.xlsx
+Sortie : FACTURE CLIENT/<SOCIETE>/<SOCIETE> <MOIS> <ANNEE>.xlsx
+    exemple : FACTURE CLIENT/BSA/BSA JUILLET 2026.xlsx
 
-Pas de fichier consolidé.
+Le sous-dossier de la société est créé automatiquement. Les PDF restent directement
+dans le dossier mère FACTURE CLIENT. Pas de fichier consolidé.
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des modifications
 manuelles), sauf avec l'option --force.
 """
@@ -29,9 +30,9 @@ import pdfplumber
 import openpyxl.styles
 from openpyxl import Workbook, load_workbook
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-PDF_DIR = os.path.join(BASE, "FACTURE CLIENT")
-OUT_DIR = os.path.join(PDF_DIR, "EXCEL")
+# Le script, le modèle et les PDF se trouvent tous dans FACTURE CLIENT.
+# Les fichiers Excel sont classés dans un sous-dossier portant le nom de la société.
+PDF_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL = os.path.join(PDF_DIR, "Modele_Import.xlsx")
 
 HEADERS = ["Numero_Facture", "Date_Soins", "Nom_Agent", "Matricule", "Societe",
@@ -216,7 +217,6 @@ def write_workbook(path, lignes):
 
 
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
     filtres = [sans_accent(a) for a in args]
@@ -233,7 +233,11 @@ def main():
         if not lignes:
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
-        out = os.path.join(OUT_DIR, f"{societe} {mois} {annee}.xlsx")
+
+        # Un dossier par société (BSA, MCI, etc.) ; les PDF restent dans PDF_DIR.
+        out_dir = os.path.join(PDF_DIR, societe)
+        os.makedirs(out_dir, exist_ok=True)
+        out = os.path.join(out_dir, f"{societe} {mois} {annee}.xlsx")
         if os.path.exists(out) and not force:
             print(f"-- {societe} {mois} {annee}.xlsx : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")

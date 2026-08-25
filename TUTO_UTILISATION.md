@@ -30,16 +30,22 @@ pip install pdfplumber openpyxl
 
 ```
 IMPORTATION/
-├── pdf_to_excel.py                      ← le script
 ├── CONVERTIR.bat                        ← double-clic = conversion (Windows)
-└── FACTURE CLIENT/
+└── FACTURE CLIENT/                      ← dossier mère
+    ├── pdf_to_excel.py                  ← le script
     ├── Modele_Import.xlsx               ← le modèle (11 colonnes) — NE PAS RENOMMER
-    ├── ... les PDF à convertir ...      ← le NOM du PDF n'a aucune importance !
-    └── EXCEL/                           ← dossier de SORTIE (créé automatiquement)
-        ├── BSA JANVIER 2026.xlsx
+    ├── ... les PDF à convertir ...      ← ils restent tous dans ce dossier mère
+    ├── BSA/                             ← fichiers Excel de la société BSA
+    │   ├── BSA JANVIER 2026.xlsx
+    │   └── ...
+    └── MCI/                             ← fichiers Excel de la société MCI
         ├── MCI JUILLET 2026.xlsx
         └── ...
 ```
+
+Le script crée automatiquement un sous-dossier pour chaque nouvelle société détectée
+et y range ses fichiers Excel. Il ne déplace pas les PDF : ceux-ci restent directement
+dans **`FACTURE CLIENT`**.
 
 ### 💡 Le nom du PDF n'a aucune importance
 Vous pouvez déposer les PDF depuis SALFA avec n'importe quel nom
@@ -65,9 +71,10 @@ facture.pdf   →  MCI JANVIER 2026.xlsx     (si c'est une facture MCI de janvie
 
 ## 3. Utilisation quotidienne — la plus simple
 
-1. 📥 Déposer le(s) PDF dans le dossier **`FACTURE CLIENT`**
+1. 📥 Déposer le(s) PDF dans le dossier mère **`FACTURE CLIENT`**
 2. 🖱️ **Double-cliquer sur `CONVERTIR.bat`**
-3. ✅ Récupérer l'Excel dans **`FACTURE CLIENT/EXCEL`** → `SOCIETE MOIS ANNEE.xlsx`
+3. ✅ Récupérer chaque Excel dans **`FACTURE CLIENT/SOCIETE`** → `SOCIETE MOIS ANNEE.xlsx`
+   (par exemple **`FACTURE CLIENT/BSA/BSA JANVIER 2026.xlsx`**)
 
 C'est tout ! La fenêtre reste ouverte pour voir le résultat (appuyer sur une
 touche pour fermer).
@@ -80,10 +87,10 @@ Ouvrir l'invite de commandes **dans le dossier IMPORTATION**
 (Windows + R → `cmd` → `cd` jusqu'au dossier, ou *Maj + clic droit → Ouvrir la fenêtre PowerShell ici*) :
 
 ```
-python pdf_to_excel.py              tout convertir
-python pdf_to_excel.py MCI          uniquement les factures MCI
-python pdf_to_excel.py BSA          uniquement les factures BSA
-python pdf_to_excel.py --force      régénérer même si l'Excel existe déjà
+python "FACTURE CLIENT\pdf_to_excel.py"              tout convertir
+python "FACTURE CLIENT\pdf_to_excel.py" MCI          uniquement les factures MCI
+python "FACTURE CLIENT\pdf_to_excel.py" BSA          uniquement les factures BSA
+python "FACTURE CLIENT\pdf_to_excel.py" --force      régénérer même si l'Excel existe déjà
 ```
 
 > 🛡️ **Sans `--force`, les Excel existants ne sont JAMAIS écrasés** : vos
@@ -131,7 +138,7 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 
 | Problème | Solution |
 |---|---|
-| `python` n'est pas reconnu | Réinstaller Python en cochant **« Add Python to PATH »**, ou essayer `py pdf_to_excel.py` |
+| `python` n'est pas reconnu | Réinstaller Python en cochant **« Add Python to PATH »**, ou essayer `py "FACTURE CLIENT\pdf_to_excel.py"` |
 | `ModuleNotFoundError: pdfplumber` | Relancer `pip install pdfplumber openpyxl` |
 | `Le fichier est utilisé par un autre processus` | Fermer l'Excel ouvert puis relancer |
 | Le PDF n'est pas converti | Vérifier que le PDF est bien **directement dans `FACTURE CLIENT`** (pas dans un sous-dossier) |
@@ -146,5 +153,6 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 1. pip install pdfplumber openpyxl          (une seule fois)
 2. Déposer les PDF dans FACTURE CLIENT      (n'importe quel nom)
 3. Double-cliquer CONVERTIR.bat
-4. Excel dans FACTURE CLIENT/EXCEL          -> SOCIETE MOIS ANNEE.xlsx
+4. Excel dans FACTURE CLIENT/SOCIETE        -> SOCIETE MOIS ANNEE.xlsx
+5. Les PDF restent dans FACTURE CLIENT
 ```
