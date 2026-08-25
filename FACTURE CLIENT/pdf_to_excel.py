@@ -13,10 +13,11 @@ Chaque PDF est analysé et le fichier de sortie est nommé d'après son CONTENU 
     - Société  -> ligne "Doit : ..."            (1er mot, ex : BSA, MCI)
     - Mois     -> ligne "Mois de prise en charge : Juillet 2026"
     - Année    -> même ligne
-Sortie : FACTURE CLIENT/EXCEL/<SOCIETE> <MOIS> <ANNEE>.xlsx
-    exemple : FACTURE CLIENT/EXCEL/BSA JUILLET 2026.xlsx
+Sortie : FACTURE CLIENT/<SOCIETE>/<SOCIETE> <MOIS> <ANNEE>.xlsx
+    exemple : FACTURE CLIENT/BSA/BSA JUILLET 2026.xlsx
+    (un sous-dossier est créé automatiquement pour chaque société)
 
-Pas de fichier consolidé.
+Pas de fichier consolidé. Les PDF restent dans le dossier mère FACTURE CLIENT.
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des modifications
 manuelles), sauf avec l'option --force.
 """
@@ -29,10 +30,11 @@ import pdfplumber
 import openpyxl.styles
 from openpyxl import Workbook, load_workbook
 
+# Le script est installé directement dans FACTURE CLIENT :
+# les PDF et le modèle sont dans son propre dossier.
 BASE = os.path.dirname(os.path.abspath(__file__))
-PDF_DIR = os.path.join(BASE, "FACTURE CLIENT")
-OUT_DIR = os.path.join(PDF_DIR, "EXCEL")
-MODEL = os.path.join(PDF_DIR, "Modele_Import.xlsx")
+PDF_DIR = BASE
+MODEL = os.path.join(BASE, "Modele_Import.xlsx")
 
 HEADERS = ["Numero_Facture", "Date_Soins", "Nom_Agent", "Matricule", "Societe",
            "Sous_Societe", "Acte_Medicale_Prix", "Montant_Total_Brut",
@@ -216,7 +218,6 @@ def write_workbook(path, lignes):
 
 
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
     filtres = [sans_accent(a) for a in args]
@@ -233,16 +234,19 @@ def main():
         if not lignes:
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
-        out = os.path.join(OUT_DIR, f"{societe} {mois} {annee}.xlsx")
+        # sous-dossier de la société, créé automatiquement
+        dossier = os.path.join(PDF_DIR, societe)
+        os.makedirs(dossier, exist_ok=True)
+        out = os.path.join(dossier, f"{societe} {mois} {annee}.xlsx")
         if os.path.exists(out) and not force:
-            print(f"-- {societe} {mois} {annee}.xlsx : existe déjà, non écrasé "
+            print(f"-- {societe}\\{societe} {mois} {annee}.xlsx : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")
             continue
         write_workbook(out, lignes)
         s_brut = sum(l["Montant_Total_Brut"] for l in lignes)
         s_tm = sum(l["Ticket_Moderateur"] for l in lignes)
         s_net = sum(l["Prise_En_Charge_Net"] for l in lignes)
-        print(f"OK {societe} {mois} {annee}.xlsx : {facture} | {len(lignes)} lignes | "
+        print(f"OK {societe}\\{societe} {mois} {annee}.xlsx : {facture} | {len(lignes)} lignes | "
               f"Brut {s_brut:,} | TM {s_tm:,} | Net {s_net:,}".replace(",", " ")
               + f"  <- {nom_pdf}")
 

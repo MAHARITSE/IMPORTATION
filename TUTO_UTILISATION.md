@@ -30,44 +30,54 @@ pip install pdfplumber openpyxl
 
 ```
 IMPORTATION/
-├── pdf_to_excel.py                      ← le script
-├── CONVERTIR.bat                        ← double-clic = conversion (Windows)
-└── FACTURE CLIENT/
+└── FACTURE CLIENT/                      ← TOUT EST ICI
+    ├── pdf_to_excel.py                  ← le script
+    ├── CONVERTIR.bat                    ← double-clic = conversion (Windows)
     ├── Modele_Import.xlsx               ← le modèle (11 colonnes) — NE PAS RENOMMER
-    ├── ... les PDF à convertir ...      ← le NOM du PDF n'a aucune importance !
-    └── EXCEL/                           ← dossier de SORTIE (créé automatiquement)
-        ├── BSA JANVIER 2026.xlsx
-        ├── MCI JUILLET 2026.xlsx
+    │
+    ├── ... les PDF ...                  ← les PDF RESTENT dans ce dossier mère
+    │                                      (le NOM du PDF n'a aucune importance)
+    │
+    ├── BSA/                             ← sous-dossier créé par société
+    │   ├── BSA JANVIER 2026.xlsx
+    │   ├── BSA FEVRIER 2026.xlsx
+    │   └── ...
+    └── MCI/
+        ├── MCI JANVIER 2026.xlsx
+        ├── MCI JUIN 2026.xlsx
         └── ...
 ```
 
 ### 💡 Le nom du PDF n'a aucune importance
 Vous pouvez déposer les PDF depuis SALFA avec n'importe quel nom
-(`facture.pdf`, `téléchargement.pdf`, …). Le script **lit le contenu du PDF** :
+(`facture.pdf`, `n'importe quoi.pdf`, …). Le script **lit le contenu du PDF** :
 
 | Information lue dans le PDF | Ligne du PDF | Exemple |
 |---|---|---|
 | **Société** | `Doit : MCI CARE` | 1er mot → `MCI` |
 | **Mois + année** | `Mois de prise en charge : Juillet 2026` | `JUILLET` `2026` |
 
-Et il nomme le fichier Excel tout seul :
+Puis il range tout seul l'Excel dans **le sous-dossier de la société** :
 
 ```
-PDF déposé (n'importe quel nom)  →  Excel créé : SOCIETE MOIS ANNEE.xlsx
+PDF déposé (n'importe quel nom)  →  Excel créé
 
-facture.pdf   →  BSA JUILLET 2026.xlsx     (si c'est une facture BSA de juillet)
-facture.pdf   →  MCI JANVIER 2026.xlsx     (si c'est une facture MCI de janvier)
+facture.pdf      →  FACTURE CLIENT\BSA\BSA JUILLET 2026.xlsx
+télécharge.pdf   →  FACTURE CLIENT\MCI\MCI JANVIER 2026.xlsx
 ```
 
-> ⚠️ **Pas de fichier consolidé** : un PDF = un fichier Excel, rien d'autre.
+> - Un **sous-dossier par société**, créé automatiquement s'il n'existe pas
+> - Les **PDF restent dans le dossier mère** `FACTURE CLIENT`
+> - **Pas de fichier consolidé** : un PDF = un fichier Excel, rien d'autre
 
 ---
 
 ## 3. Utilisation quotidienne — la plus simple
 
 1. 📥 Déposer le(s) PDF dans le dossier **`FACTURE CLIENT`**
-2. 🖱️ **Double-cliquer sur `CONVERTIR.bat`**
-3. ✅ Récupérer l'Excel dans **`FACTURE CLIENT/EXCEL`** → `SOCIETE MOIS ANNEE.xlsx`
+2. 🖱️ **Double-cliquer sur `CONVERTIR.bat`** (dans ce même dossier)
+3. ✅ Récupérer l'Excel dans **`FACTURE CLIENT\BSA`**, **`FACTURE CLIENT\MCI`**, …
+    → `SOCIETE MOIS ANNEE.xlsx`
 
 C'est tout ! La fenêtre reste ouverte pour voir le résultat (appuyer sur une
 touche pour fermer).
@@ -76,7 +86,7 @@ touche pour fermer).
 
 ## 4. Les commandes (si vous préférez le terminal)
 
-Ouvrir l'invite de commandes **dans le dossier IMPORTATION**
+Ouvrir l'invite de commandes **dans le dossier FACTURE CLIENT**
 (Windows + R → `cmd` → `cd` jusqu'au dossier, ou *Maj + clic droit → Ouvrir la fenêtre PowerShell ici*) :
 
 ```
@@ -88,7 +98,7 @@ python pdf_to_excel.py --force      régénérer même si l'Excel existe déjà
 
 > 🛡️ **Sans `--force`, les Excel existants ne sont JAMAIS écrasés** : vos
 > modifications manuelles sont protégées. Message affiché dans ce cas :
-> `-- MCI JUIN 2026.xlsx : existe déjà, non écrasé`
+> `-- MCI\MCI JUIN 2026.xlsx : existe déjà, non écrasé`
 
 ---
 
@@ -146,5 +156,5 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 1. pip install pdfplumber openpyxl          (une seule fois)
 2. Déposer les PDF dans FACTURE CLIENT      (n'importe quel nom)
 3. Double-cliquer CONVERTIR.bat
-4. Excel dans FACTURE CLIENT/EXCEL          -> SOCIETE MOIS ANNEE.xlsx
+4. Excel rangé dans FACTURE CLIENT\SOCIETE\SOCIETE MOIS ANNEE.xlsx
 ```
