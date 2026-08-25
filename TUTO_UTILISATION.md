@@ -31,16 +31,21 @@ pip install pdfplumber openpyxl
 ```
 IMPORTATION/
 ├── CONVERTIR.bat                        ← double-clic = conversion (Windows)
-└── FACTURE CLIENT/                      ← dossier mère
-    ├── pdf_to_excel.py                  ← le script
-    ├── Modele_Import.xlsx               ← le modèle (11 colonnes) — NE PAS RENOMMER
-    ├── ... les PDF à convertir ...      ← ils restent tous dans ce dossier mère
-    ├── BSA/                             ← fichiers Excel de la société BSA
-    │   ├── BSA JANVIER 2026.xlsx
-    │   └── ...
-    └── MCI/                             ← fichiers Excel de la société MCI
-        ├── MCI JUILLET 2026.xlsx
-        └── ...
+├── FACTURE CLIENT/                      ← dossier mère des FACTURES
+│   ├── pdf_to_excel.py                  ← le script factures
+│   ├── Modele_Import.xlsx               ← le modèle (11 colonnes) — NE PAS RENOMMER
+│   ├── ... les PDF à convertir ...      ← ils restent tous dans ce dossier mère
+│   ├── BSA/                             ← fichiers Excel de la société BSA
+│   │   ├── BSA JANVIER 2026.xlsx
+│   │   └── ...
+│   └── MCI/                             ← fichiers Excel de la société MCI
+│       ├── MCI JUILLET 2026.xlsx
+│       └── ...
+└── PAIEMENT CLIENT/                     ← paiements des assurances (voir §9)
+    ├── pdf_paiement_to_excel.py         ← le script paiements
+    ├── Modele_Import_Reglements_Decompte_Assurance.xlsx  — NE PAS RENOMMER
+    ├── BSA/                             ← PDF + Excel de la société BSA
+    └── MCI CARE/                        ← PDF + Excel de la société MCI CARE
 ```
 
 Le script crée automatiquement un sous-dossier pour chaque nouvelle société détectée
@@ -156,3 +161,84 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 4. Excel dans FACTURE CLIENT/SOCIETE        -> SOCIETE MOIS ANNEE.xlsx
 5. Les PDF restent dans FACTURE CLIENT
 ```
+
+---
+
+## 9. PAIEMENT CLIENT — décomptes de règlements des assurances
+
+Le dossier **`PAIEMENT CLIENT`** est converti par le script
+**`PAIEMENT CLIENT/pdf_paiement_to_excel.py`** selon le modèle
+**`Modele_Import_Reglements_Decompte_Assurance.xlsx`**
+(feuille `Modele_Reglements`, 13 colonnes).
+
+### Organisation
+
+```
+PAIEMENT CLIENT/
+├── pdf_paiement_to_excel.py               ← le script
+├── Modele_Import_Reglements_Decompte_Assurance.xlsx  ← NE PAS RENOMMER
+├── BSA/                                   ← PDF + Excel de la société BSA
+│   ├── 17-04-2026 BFV-SG 1129370 ....pdf
+│   └── BSA AVRIL 928 750.xlsx
+└── MCI CARE/                              ← PDF + Excel de la société MCI CARE
+    ├── DISPENSAIRE LOTERANA ....pdf
+    └── MCI CARE MAI 471 140.xlsx
+```
+
+**Chaque société a son sous-dossier, et c'est le NOM DU SOUS-DOSSIER qui donne
+le nom de la société.** Le nom du PDF lui-même n'a aucune importance.
+(Un PDF posé directement dans `PAIEMENT CLIENT` est accepté : la société est
+alors lue dans le contenu du PDF.)
+
+### Utilisation
+
+`CONVERTIR.bat` lance **les deux** conversions (factures + paiements).
+Ou directement :
+
+```
+python "PAIEMENT CLIENT\pdf_paiement_to_excel.py"              tout convertir
+python "PAIEMENT CLIENT\pdf_paiement_to_excel.py" BSA          uniquement BSA
+python "PAIEMENT CLIENT\pdf_paiement_to_excel.py" "MCI CARE"   uniquement MCI CARE
+python "PAIEMENT CLIENT\pdf_paiement_to_excel.py" --force      régénérer
+```
+
+### Nom du fichier Excel créé : SOCIÉTÉ + MOIS DU PAIEMENT + MONTANT
+
+```
+exemple : MCI CARE Mai 471 140.xlsx
+           └─────┬──────┘ └──┬───┘ └───┬────┘
+             société      mois du   total payé
+        (sous-dossier)  règlement   par l'assureur
+```
+
+| Pièce | Où le script la lit |
+|---|---|
+| **Société** | nom du sous-dossier (`BSA`, `MCI CARE`, ...) |
+| **Mois** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` |
+| **Montant** | BSA : montant du virement · MCI : `Total prestataire` (colonne Montant réglé) |
+
+### Colonnes produites (13)
+
+| Colonne | BSA (relevé de remboursements) | MCI (décompte de règlement) |
+|---|---|---|
+| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée |
+| `Date_Reglement` | date du virement | date comptable |
+| `Date_Soins` | date du soin (colonne DATE) | date de soins |
+| `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire |
+| `Matricule` | n° ADHESION | matricule |
+| `Numero_Facture_Prescription` | facture SALFA (ex `FA-02/BFV/26-022`) | même facture |
+| `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... |
+| `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) |
+| `Montant_Reclame_Brut` | FR.REELS | Montant réclamé |
+| `Ticket_Moderateur` | TPG* | Montant réclamé − Montant réglé |
+| `Montant_Paye_Regle` | REMB | Montant réglé |
+| `Montant_Exclu_Rejet` | NON REMB | Mtt non remboursé |
+| `Motif_Observation` | `Prise en charge : 95%` | `Ticket modérateur 10%` |
+
+### Vérifications automatiques
+
+- ✅ BSA : somme des REMB = montant du virement annoncé
+- ✅ BSA : nombre de lignes lues = nombre déclaré dans le « Total général »
+- ✅ MCI : somme des « Montant réglé » = « Total prestataire »
+- ❌ Si écart → ligne `!! ATTENTION : ...` affichée (à contrôler manuellement)
+- 🛡️ Sans `--force`, les Excel existants ne sont JAMAIS écrasés
