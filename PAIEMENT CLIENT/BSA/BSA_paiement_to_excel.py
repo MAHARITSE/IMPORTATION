@@ -22,9 +22,13 @@ Utilisation (double-clic sur BSA_paiement.bat, ou invite de commandes) :
     python BSA_paiement_to_excel.py --force            # régénérer (écrase l'Excel existant)
     python BSA_paiement_to_excel.py "mon_releve.pdf"   # un seul PDF (nom ou chemin)
 
-Sortie : BSA <MOIS> <MONTANT>.xlsx dans ce même dossier
-    exemple : BSA Avril 928 750.xlsx
-    - MOIS    : mois du virement (ligne "A , le 17/04/2026")
+Sortie : BSA <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx dans ce même dossier
+    exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+    - SOCIETE : BSA (fixée dans ce script)
+    - MOIS    : mois du virement (ligne "A , le 17/04/2026"), en MAJUSCULES
+    - ANNEE   : année du virement
+    - PERIODE : 1re et dernière date de soins du relevé, au format JJ-MM-AA
+                (une seule date si toutes les lignes sont du même jour)
     - MONTANT : total payé (somme des REMB = montant du virement)
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
@@ -81,8 +85,29 @@ def sans_accent(s):
 
 
 def amount_to_float(s):
-    """'1 234,56' -> 1234.56"""
-    return float(s.replace("\u00a0", " ").replace(" ", "").replace(",", "."))
+    """Montant d'un PDF -> nombre. '' / None / texte non numérique -> 0.0.
+
+    Gère les deux notations rencontrées dans les PDF :
+        française : '15 000,00' / '928 750'  -> 15000.0 / 928750.0
+        anglaise  : '75,000' / '1,234.56'    -> 75000.0 / 1234.56
+    """
+    s = re.sub(r"[^\d.,-]", "", str(s or "").replace("\u00a0", " "))
+    if not s:
+        return 0.0
+    virgule, point = s.rfind(","), s.rfind(".")
+    dernier = max(virgule, point)
+    if dernier >= 0 and s.count(",") + s.count(".") == 1 \
+            and len(s) - dernier - 1 == 3:
+        # un seul séparateur suivi de 3 chiffres = séparateur de milliers
+        s = s.replace(",", "").replace(".", "")
+    elif virgule > point:
+        s = s.replace(".", "").replace(",", ".")   # virgule = décimales
+    else:
+        s = s.replace(",", "")                     # point = décimales
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
 
 
 def fmt_amount(n):
@@ -104,6 +129,57 @@ def parse_date(d):
     year = int(yy)
     year += 2000 if year < 100 else 0
     return f"{year:04d}-{mm}-{dd}"
+
+
+# --------------------------------------------------------------------------
+# Nom du fichier Excel de sortie
+#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
+#   exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+# --------------------------------------------------------------------------
+# Caractères interdits dans un nom de fichier Windows
+INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+DATE_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def date_courte(iso):
+    """'2026-01-27' -> '27-01-26' (JJ-MM-AA)."""
+    annee, mois, jour = iso.split("-")
+    return f"{jour}-{mois}-{annee[2:]}"
+
+
+def periode_soins(lignes, defaut=None):
+    """Période couverte par le paiement : '27-01-26 à 23-02-26'.
+
+    Prend la 1re et la dernière date de soins (colonne Date_Soins) des lignes
+    du fichier. Une seule date si toutes les lignes tombent le même jour.
+    À défaut (aucune date de soins lisible), la date de règlement.
+    """
+    dates = sorted(l.get("Date_Soins") or "" for l in lignes)
+    dates = [d for d in dates if DATE_ISO.match(d)]
+    if not dates:
+        if not (defaut and DATE_ISO.match(defaut)):
+            return "SANS DATE"
+        dates = [defaut]
+    debut, fin = dates[0], dates[-1]
+    return date_courte(debut) if debut == fin \
+        else f"{date_courte(debut)} à {date_courte(fin)}"
+
+
+def nom_sortie(societe, date_reglement, lignes, montant):
+    """Construit le nom du fichier Excel :
+
+        <SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
+        BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+
+    date_reglement : 'AAAA-MM-JJ' (date du virement / date comptable).
+    """
+    annee, mm, _ = date_reglement.split("-")
+    mois = MONTHS[int(mm) - 1].upper()
+    nom = (f"{societe} {mois} {annee} "
+           f"{periode_soins(lignes, date_reglement)} {fmt_amount(montant)}")
+    nom = re.sub(r"\s+", " ", INVALIDES.sub(" ", nom)).strip()
+    return nom + ".xlsx"
 
 
 def group_words(words, tol=2.5):
@@ -348,12 +424,12 @@ def main():
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
 
-        # --- Nom du fichier : BSA MOIS MONTANT ---
-        dr = (meta.get("date_reglement") or "")
-        if len(dr) != 10:
+        # --- Nom du fichier : BSA MOIS ANNEE PERIODE MONTANT ---
+        dr = (meta.get("date_reglement") or "").strip()
+        if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
             print(f"!! {nom_pdf} : date de règlement introuvable -> ignoré")
             continue
-        mois = MONTHS[int(dr[3:5]) - 1]
+        date_reglement = parse_date(dr)          # 'AAAA-MM-JJ'
 
         total_paye = sum(l["Montant_Paye_Regle"] for l in lignes)
         ref = f"relevé N° {meta['ref']}" if meta["ref"] else "relevé"
@@ -369,7 +445,8 @@ def main():
             print(f"   !! ATTENTION : {len(lignes)} lignes lues, "
                   f"{meta['nb_declare']} déclarées dans le total général du relevé")
 
-        out = os.path.join(PDF_DIR, f"{SOCIETE} {mois} {fmt_amount(total_paye)}.xlsx")
+        out = os.path.join(PDF_DIR,
+                           nom_sortie(SOCIETE, date_reglement, lignes, total_paye))
         if os.path.exists(out) and not force:
             print(f"-- {os.path.basename(out)} : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")

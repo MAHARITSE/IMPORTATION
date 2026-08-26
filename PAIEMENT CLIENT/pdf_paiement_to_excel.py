@@ -21,11 +21,14 @@ le nom du sous-dossier = la société. Un PDF posé directement dans
 PAIEMENT CLIENT est aussi accepté (société déduite du contenu du PDF).
 Le nom du PDF lui-même n'a AUCUNE importance.
 
-Sortie : PAIEMENT CLIENT/<SOCIETE>/<SOCIETE> <MOIS> <MONTANT>.xlsx
+Sortie : PAIEMENT CLIENT/<SOCIETE>/<SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
     - SOCIETE : nom du sous-dossier (ex : "MCI CARE")
-    - MOIS    : mois du règlement (virement BSA / date comptable MCI)
+    - MOIS    : mois du règlement (virement BSA / date comptable MCI), MAJUSCULES
+    - ANNEE   : année du règlement
+    - PERIODE : 1re et dernière date de soins payées, au format JJ-MM-AA
     - MONTANT : total payé par l'assureur
-    exemple : PAIEMENT CLIENT/MCI CARE/MCI CARE Mai 471 140.xlsx
+    exemples : PAIEMENT CLIENT/BSA/BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+               PAIEMENT CLIENT/MCI CARE/MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
@@ -78,8 +81,29 @@ def sans_accent(s):
 
 
 def amount_to_float(s):
-    """'1 234,56' -> 1234.56"""
-    return float(s.replace("\u00a0", " ").replace(" ", "").replace(",", "."))
+    """Montant d'un PDF -> nombre. '' / None / texte non numérique -> 0.0.
+
+    Gère les deux notations rencontrées dans les PDF :
+        française : '15 000,00' / '928 750'  -> 15000.0 / 928750.0
+        anglaise  : '75,000' / '1,234.56'    -> 75000.0 / 1234.56
+    """
+    s = re.sub(r"[^\d.,-]", "", str(s or "").replace("\u00a0", " "))
+    if not s:
+        return 0.0
+    virgule, point = s.rfind(","), s.rfind(".")
+    dernier = max(virgule, point)
+    if dernier >= 0 and s.count(",") + s.count(".") == 1 \
+            and len(s) - dernier - 1 == 3:
+        # un seul séparateur suivi de 3 chiffres = séparateur de milliers
+        s = s.replace(",", "").replace(".", "")
+    elif virgule > point:
+        s = s.replace(".", "").replace(",", ".")   # virgule = décimales
+    else:
+        s = s.replace(",", "")                     # point = décimales
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
 
 
 def fmt_amount(n):
@@ -87,6 +111,19 @@ def fmt_amount(n):
     if abs(n - round(n)) < 0.005:
         return f"{int(round(n)):,}".replace(",", " ")
     return f"{n:,.1f}".replace(",", " ").replace(".", ",")
+
+
+# Montant dans un décompte MCI : notation française ("1 153 900", "15 000,00")
+# ou anglaise ("75,000", "1,234.56") selon l'édition du PDF.
+MONTANT_RE = re.compile(
+    r"\d{1,3}(?!\d)(?:[ \u00a0]\d{3})*(?:[.,]\d{3})?(?:[.,]\d{2})?"
+    r"|\d+(?:[.,]\d+)?")
+
+
+def dernier_montant(ligne):
+    """Dernier montant d'une ligne de total = colonne "Montant réglé"."""
+    trouves = MONTANT_RE.findall(ligne)
+    return amount_to_float(trouves[-1]) if trouves else 0.0
 
 
 def num(s):
@@ -101,6 +138,58 @@ def parse_date(d):
     year = int(yy)
     year += 2000 if year < 100 else 0
     return f"{year:04d}-{mm}-{dd}"
+
+
+# --------------------------------------------------------------------------
+# Nom du fichier Excel de sortie
+#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
+#   exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+#           : MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx
+# --------------------------------------------------------------------------
+# Caractères interdits dans un nom de fichier Windows
+INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+DATE_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def date_courte(iso):
+    """'2026-01-27' -> '27-01-26' (JJ-MM-AA)."""
+    annee, mois, jour = iso.split("-")
+    return f"{jour}-{mois}-{annee[2:]}"
+
+
+def periode_soins(lignes, defaut=None):
+    """Période couverte par le paiement : '27-01-26 à 23-02-26'.
+
+    Prend la 1re et la dernière date de soins (colonne Date_Soins) des lignes
+    du fichier. Une seule date si toutes les lignes tombent le même jour.
+    À défaut (aucune date de soins lisible), la date de règlement.
+    """
+    dates = sorted(l.get("Date_Soins") or "" for l in lignes)
+    dates = [d for d in dates if DATE_ISO.match(d)]
+    if not dates:
+        if not (defaut and DATE_ISO.match(defaut)):
+            return "SANS DATE"
+        dates = [defaut]
+    debut, fin = dates[0], dates[-1]
+    return date_courte(debut) if debut == fin \
+        else f"{date_courte(debut)} à {date_courte(fin)}"
+
+
+def nom_sortie(societe, date_reglement, lignes, montant):
+    """Construit le nom du fichier Excel :
+
+        <SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
+        BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+
+    date_reglement : 'AAAA-MM-JJ' (virement BSA / date comptable MCI).
+    """
+    annee, mm, _ = date_reglement.split("-")
+    mois = MONTHS[int(mm) - 1].upper()
+    nom = (f"{societe} {mois} {annee} "
+           f"{periode_soins(lignes, date_reglement)} {fmt_amount(montant)}")
+    nom = re.sub(r"\s+", " ", INVALIDES.sub(" ", nom)).strip()
+    return nom + ".xlsx"
 
 
 def group_words(words, tol=2.5):
@@ -313,9 +402,13 @@ def parse_mci(pdf, nom_pdf):
     m = re.search(r"Garant:\s*(\S+)\s+([^\n]+)", text)
     if m:
         meta["garant"] = m.group(1) + " " + m.group(2).strip()
-    m = re.search(r"Total prestataire:\s*[\d\u00a0 ]+\s+[\d\u00a0 ]+\s+[\d\u00a0 ]+\s+-?\s*([\d\u00a0 ]+)", text)
-    if m:
-        meta["total_prestataire"] = amount_to_float(m.group(1))
+    # "Total prestataire:" apparait une fois par page (une page = un
+    # établissement : PHIE, LABO, IMAGERIE, DISPENSAIRE...). On additionne
+    # tous ces totaux pour avoir le total payé du décompte complet.
+    totaux = [dernier_montant(l)
+              for l in re.findall(r"Total prestataire:([^\n]*)", text)]
+    if totaux:
+        meta["total_prestataire"] = sum(totaux)
 
     lignes = []
     for page in pdf.pages:
@@ -324,8 +417,11 @@ def parse_mci(pdf, nom_pdf):
                 continue
             for row in table[1:]:
                 c = [str(x or "").strip() for x in row[:9]]
-                if not c[0] or not c[0][0].isdigit():
-                    continue  # lignes totaux / descriptions / vides
+                # Ligne de données = matricule numérique + date de soins ;
+                # sinon : ligne de total, "999 EXCLUSION...", description...
+                if len(c) < 9 or not c[0].isdigit() \
+                        or not re.fullmatch(r"\d{2}/\d{2}/\d{4}", c[2]):
+                    continue
                 (matricule, benef, date, acte, reclame,
                  nonremb, base, tm, regle) = c
                 tm_montant = round(amount_to_float(reclame) - amount_to_float(regle))
@@ -425,12 +521,12 @@ def main():
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
 
-        # --- Nom du fichier : SOCIETE MOIS MONTANT ---
-        dr = (meta.get("date_reglement") or "")
-        if len(dr) != 10:
+        # --- Nom du fichier : SOCIETE MOIS ANNEE PERIODE MONTANT ---
+        dr = (meta.get("date_reglement") or "").strip()
+        if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
             print(f"!! {nom_pdf} : date de règlement introuvable -> ignoré")
             continue
-        mois = MONTHS[int(dr[3:5]) - 1]
+        date_reglement = parse_date(dr)          # 'AAAA-MM-JJ'
 
         if kind == "bsa":
             total_paye = sum(l["Montant_Paye_Regle"] for l in lignes)
@@ -447,8 +543,9 @@ def main():
                 print(f"   !! ATTENTION : {len(lignes)} lignes lues, "
                       f"{meta['nb_declare']} déclarées dans le total général du relevé")
         else:
-            total_paye = meta["total_prestataire"] or \
-                sum(l["Montant_Paye_Regle"] for l in lignes)
+            # Montant payé = somme des "Montant réglé" des lignes (le total
+            # prestataire du PDF sert seulement de contrôle, ci-dessous).
+            total_paye = sum(l["Montant_Paye_Regle"] for l in lignes)
             ref = f"facture {meta['facture']}" if meta["facture"] else "décompte"
             if meta["total_prestataire"] is not None:
                 somme = sum(l["Montant_Paye_Regle"] for l in lignes)
@@ -458,7 +555,8 @@ def main():
 
         out_dir = os.path.join(PDF_DIR, societe)
         os.makedirs(out_dir, exist_ok=True)
-        out = os.path.join(out_dir, f"{societe} {mois} {fmt_amount(total_paye)}.xlsx")
+        out = os.path.join(out_dir,
+                           nom_sortie(societe, date_reglement, lignes, total_paye))
         if os.path.exists(out) and not force:
             print(f"-- {os.path.basename(out)} : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")

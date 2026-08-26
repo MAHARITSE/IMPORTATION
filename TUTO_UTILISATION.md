@@ -183,12 +183,12 @@ PAIEMENT CLIENT/
 │   ├── BSA_paiement_to_excel.py           ← script du format BSA
 │   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
 │   ├── 17-04-2026 BFV-SG 1129370 ....pdf  ← les PDF BSA à convertir
-│   └── BSA Avril 928 750.xlsx             ← l'Excel produit
+│   └── BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx   ← l'Excel produit
 └── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
     ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
     ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
     ├── DISPENSAIRE LOTERANA ....pdf       ← les PDF MCI CARE à convertir
-    └── MCI CARE Mai 471 140.xlsx          ← l'Excel produit
+    └── MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx ← l'Excel produit
 ```
 
 **Chaque société a son dossier avec SON script et SON .bat.** On dépose le PDF
@@ -224,20 +224,28 @@ python MCI_CARE_paiement_to_excel.py --force       régénérer
 python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf"   un seul PDF
 ```
 
-### Nom du fichier Excel créé : SOCIÉTÉ + MOIS DU PAIEMENT + MONTANT
+### Nom du fichier Excel créé : SOCIÉTÉ + MOIS + ANNÉE + PÉRIODE + MONTANT
 
 ```
-exemple : MCI CARE Mai 471 140.xlsx
-           └─────┬──────┘ └──┬───┘ └───┬────┘
-             société      mois du   total payé
-        (sous-dossier)  règlement   par l'assureur
+exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+           └┬┘ └──┬──┘ └─┬─┘ └─────────┬──────────┘ └───┬────┘
+        société  mois   année   intervalle des dates    montant
+       (dossier)      du paiement     de soins          payé
+
+exemple : MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx
 ```
 
 | Pièce | Où le script la lit |
 |---|---|
 | **Société** | fixée dans le script du dossier (`BSA` / `MCI CARE`) |
-| **Mois** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` |
-| **Montant** | BSA : montant du virement · MCI : `Total prestataire` (colonne Montant réglé) |
+| **Mois + année** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` |
+| **Intervalle des dates** | 1re et dernière date de soins des lignes (colonne `Date_Soins`), au format `JJ-MM-AA`. Une seule date si toutes les lignes tombent le même jour (`BSA JUILLET 2026 17-04-26 20 000.xlsx`) |
+| **Montant** | BSA : somme des `REMB` (= montant du virement) · MCI : somme des « Montant réglé » de toutes les pages du décompte |
+
+Le mois est en MAJUSCULES sans accent (`FEVRIER`, `AOUT`), comme pour les
+factures. Les dates de l'intervalle gardent l'année sur 2 chiffres (`25` = 2025),
+même quand elles ne sont pas de la même année que le paiement :
+`MCI CARE JANVIER 2026 03-11-25 à 16-11-25 206 000.xlsx`.
 
 ### Colonnes produites (13)
 
@@ -262,5 +270,7 @@ exemple : MCI CARE Mai 471 140.xlsx
 - ✅ BSA : somme des REMB = montant du virement annoncé
 - ✅ BSA : nombre de lignes lues = nombre déclaré dans le « Total général »
 - ✅ MCI : somme des « Montant réglé » = « Total prestataire »
+  (les totaux de toutes les pages du décompte sont additionnés : un PDF couvre
+  parfois plusieurs établissements — PHIE, LABO, IMAGERIE, DISPENSAIRE)
 - ❌ Si écart → ligne `!! ATTENTION : ...` affichée (à contrôler manuellement)
 - 🛡️ Sans `--force`, les Excel existants ne sont JAMAIS écrasés
