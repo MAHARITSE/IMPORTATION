@@ -42,10 +42,13 @@ IMPORTATION/
 │       ├── MCI JUILLET 2026.xlsx
 │       └── ...
 └── PAIEMENT CLIENT/                     ← paiements des assurances (voir §9)
-    ├── pdf_paiement_to_excel.py         ← le script paiements
     ├── Modele_Import_Reglements_Decompte_Assurance.xlsx  — NE PAS RENOMMER
-    ├── BSA/                             ← PDF + Excel de la société BSA
-    └── MCI CARE/                        ← PDF + Excel de la société MCI CARE
+    ├── BSA/                             ← PDF + Excel + script de la société BSA
+    │   ├── BSA_paiement_to_excel.py     ← le script paiements BSA
+    │   └── BSA_paiement.bat             ← double-clic = conversion BSA
+    └── MCI CARE/                        ← PDF + Excel + script de MCI CARE
+        ├── MCI_CARE_paiement_to_excel.py ← le script paiements MCI CARE
+        └── MCI_CARE_paiement.bat         ← double-clic = conversion MCI CARE
 ```
 
 Le script crée automatiquement un sous-dossier pour chaque nouvelle société détectée
@@ -166,8 +169,8 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 
 ## 9. PAIEMENT CLIENT — décomptes de règlements des assurances
 
-Le dossier **`PAIEMENT CLIENT`** est converti par le script
-**`PAIEMENT CLIENT/pdf_paiement_to_excel.py`** selon le modèle
+Le dossier **`PAIEMENT CLIENT`** contient **un script Python + un .bat par
+société**, chacun adapté au format de paiement de sa société, selon le modèle
 **`Modele_Import_Reglements_Decompte_Assurance.xlsx`**
 (feuille `Modele_Reglements`, 13 colonnes).
 
@@ -175,31 +178,50 @@ Le dossier **`PAIEMENT CLIENT`** est converti par le script
 
 ```
 PAIEMENT CLIENT/
-├── pdf_paiement_to_excel.py               ← le script
-├── Modele_Import_Reglements_Decompte_Assurance.xlsx  ← NE PAS RENOMMER
-├── BSA/                                   ← PDF + Excel de la société BSA
-│   ├── 17-04-2026 BFV-SG 1129370 ....pdf
-│   └── BSA AVRIL 928 750.xlsx
-└── MCI CARE/                              ← PDF + Excel de la société MCI CARE
-    ├── DISPENSAIRE LOTERANA ....pdf
-    └── MCI CARE MAI 471 140.xlsx
+├── Modele_Import_Reglements_Decompte_Assurance.xlsx   ← NE PAS RENOMMER
+├── BSA/                                   ← société BSA (relevés de remboursements)
+│   ├── BSA_paiement_to_excel.py           ← script du format BSA
+│   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
+│   ├── 17-04-2026 BFV-SG 1129370 ....pdf  ← les PDF BSA à convertir
+│   └── BSA Avril 928 750.xlsx             ← l'Excel produit
+└── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
+    ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
+    ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
+    ├── DISPENSAIRE LOTERANA ....pdf       ← les PDF MCI CARE à convertir
+    └── MCI CARE Mai 471 140.xlsx          ← l'Excel produit
 ```
 
-**Chaque société a son sous-dossier, et c'est le NOM DU SOUS-DOSSIER qui donne
-le nom de la société.** Le nom du PDF lui-même n'a aucune importance.
-(Un PDF posé directement dans `PAIEMENT CLIENT` est accepté : la société est
-alors lue dans le contenu du PDF.)
+**Chaque société a son dossier avec SON script et SON .bat.** On dépose le PDF
+dans le dossier de sa société, puis on double-clique sur le .bat du dossier.
+Si un PDF d'une autre société (ou d'un autre format) est déposé par erreur dans
+un dossier, le script l'ignore avec un message d'avertissement.
+Le nom du PDF lui-même n'a aucune importance.
+
+| Dossier | Format de paiement reconnu |
+|---|---|
+| `BSA/` | `RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE` |
+| `MCI CARE/` | `DECOMPTE DE REGLEMENT FACTURES` |
 
 ### Utilisation
 
-`CONVERTIR.bat` lance **les deux** conversions (factures + paiements).
-Ou directement :
+`CONVERTIR.bat` lance les factures puis **chaque société de paiement une à
+une**. Ou, société par société, double-cliquer sur le .bat du dossier :
 
 ```
-python "PAIEMENT CLIENT\pdf_paiement_to_excel.py"              tout convertir
-python "PAIEMENT CLIENT\pdf_paiement_to_excel.py" BSA          uniquement BSA
-python "PAIEMENT CLIENT\pdf_paiement_to_excel.py" "MCI CARE"   uniquement MCI CARE
-python "PAIEMENT CLIENT\pdf_paiement_to_excel.py" --force      régénérer
+PAIEMENT CLIENT\BSA\BSA_paiement.bat              tout convertir pour BSA
+PAIEMENT CLIENT\MCI CARE\MCI_CARE_paiement.bat    tout convertir pour MCI CARE
+```
+
+Ou en invite de commandes (dans le dossier de la société) :
+
+```
+python BSA_paiement_to_excel.py                    tous les PDF BSA du dossier
+python BSA_paiement_to_excel.py --force            régénérer (écrase l'Excel existant)
+python BSA_paiement_to_excel.py "mon_releve.pdf"   un seul PDF
+
+python MCI_CARE_paiement_to_excel.py               tous les PDF MCI CARE du dossier
+python MCI_CARE_paiement_to_excel.py --force       régénérer
+python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf"   un seul PDF
 ```
 
 ### Nom du fichier Excel créé : SOCIÉTÉ + MOIS DU PAIEMENT + MONTANT
@@ -213,7 +235,7 @@ exemple : MCI CARE Mai 471 140.xlsx
 
 | Pièce | Où le script la lit |
 |---|---|
-| **Société** | nom du sous-dossier (`BSA`, `MCI CARE`, ...) |
+| **Société** | fixée dans le script du dossier (`BSA` / `MCI CARE`) |
 | **Mois** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` |
 | **Montant** | BSA : montant du virement · MCI : `Total prestataire` (colonne Montant réglé) |
 
