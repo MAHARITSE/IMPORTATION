@@ -21,14 +21,15 @@ le nom du sous-dossier = la société. Un PDF posé directement dans
 PAIEMENT CLIENT est aussi accepté (société déduite du contenu du PDF).
 Le nom du PDF lui-même n'a AUCUNE importance.
 
-Sortie : PAIEMENT CLIENT/<SOCIETE>/<SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
+Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+    (sous-dossier <ANNEE> = année du règlement, créé automatiquement)
     - SOCIETE : nom du sous-dossier (ex : "MCI CARE")
     - MOIS    : mois du règlement (virement BSA / date comptable MCI), MAJUSCULES
-    - ANNEE   : année du règlement
+    - ANNEE   : année du règlement (sert aussi de nom au sous-dossier)
     - PERIODE : 1re et dernière date de soins payées, au format JJ-MM-AA
-    - MONTANT : total payé par l'assureur
-    exemples : PAIEMENT CLIENT/BSA/BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
-               PAIEMENT CLIENT/MCI CARE/MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx
+    - MONTANT : total payé par l'assureur, précédé du mot "MONTANT" et suivi de "Ar"
+    exemples : PAIEMENT CLIENT/BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+               PAIEMENT CLIENT/MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
@@ -43,7 +44,9 @@ import openpyxl.styles
 from openpyxl import Workbook, load_workbook
 
 # Le script, le modèle et les PDF se trouvent dans PAIEMENT CLIENT.
-# Les fichiers Excel sont classés dans un sous-dossier portant le nom de la société.
+# Les fichiers Excel sont classés dans un sous-dossier portant le nom de la
+# société, puis dans un sous-dossier au nom de l'année du règlement
+# (ex : PAIEMENT CLIENT/BSA/2026/...), créés automatiquement.
 PDF_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL = os.path.join(PDF_DIR, "Modele_Import_Reglements_Decompte_Assurance.xlsx")
 SHEET = "Modele_Reglements"
@@ -142,9 +145,11 @@ def parse_date(d):
 
 # --------------------------------------------------------------------------
 # Nom du fichier Excel de sortie
-#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
-#   exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
-#           : MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx
+#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+#   exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+#           : MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+# Classé dans un sous-dossier au nom de l'année du règlement :
+#   BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 # --------------------------------------------------------------------------
 # Caractères interdits dans un nom de fichier Windows
 INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -179,17 +184,32 @@ def periode_soins(lignes, defaut=None):
 def nom_sortie(societe, date_reglement, lignes, montant):
     """Construit le nom du fichier Excel :
 
-        <SOCIETE> <MOIS> <ANNEE> <PERIODE> <MONTANT>.xlsx
-        BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
+        <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+        BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ' (virement BSA / date comptable MCI).
     """
     annee, mm, _ = date_reglement.split("-")
     mois = MONTHS[int(mm) - 1].upper()
     nom = (f"{societe} {mois} {annee} "
-           f"{periode_soins(lignes, date_reglement)} {fmt_amount(montant)}")
+           f"{periode_soins(lignes, date_reglement)} "
+           f"MONTANT {fmt_amount(montant)}Ar")
     nom = re.sub(r"\s+", " ", INVALIDES.sub(" ", nom)).strip()
     return nom + ".xlsx"
+
+
+def dossier_annee(societe, date_reglement):
+    """Chemin complet du dossier <SOCIETE>/<ANNEE> (créé si absent).
+
+    Les Excel sont classés par société puis par année du règlement :
+        BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+
+    date_reglement : 'AAAA-MM-JJ'.
+    """
+    annee = date_reglement.split("-")[0]
+    d = os.path.join(PDF_DIR, societe, annee)
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def group_words(words, tol=2.5):
@@ -521,7 +541,8 @@ def main():
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
 
-        # --- Nom du fichier : SOCIETE MOIS ANNEE PERIODE MONTANT ---
+        # --- Nom du fichier : SOCIETE MOIS ANNEE PERIODE MONTANT <montant>Ar,
+        #     classé dans le sous-dossier <SOCIETE>/<ANNEE du règlement> ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
             print(f"!! {nom_pdf} : date de règlement introuvable -> ignoré")
@@ -553,16 +574,15 @@ def main():
                     print(f"   !! ATTENTION : {fmt_amount(somme)} Ar en lignes "
                           f"≠ total prestataire ({fmt_amount(meta['total_prestataire'])} Ar)")
 
-        out_dir = os.path.join(PDF_DIR, societe)
-        os.makedirs(out_dir, exist_ok=True)
-        out = os.path.join(out_dir,
+        out = os.path.join(dossier_annee(societe, date_reglement),
                            nom_sortie(societe, date_reglement, lignes, total_paye))
+        relatif = os.path.relpath(out, PDF_DIR)
         if os.path.exists(out) and not force:
-            print(f"-- {os.path.basename(out)} : existe déjà, non écrasé "
+            print(f"-- {relatif} : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")
             continue
         write_workbook(out, lignes)
-        print(f"OK {os.path.basename(out)} : {ref} | {len(lignes)} lignes | "
+        print(f"OK {relatif} : {ref} | {len(lignes)} lignes | "
               f"Payé {fmt_amount(total_paye)} Ar  <- {nom_pdf}")
 
 

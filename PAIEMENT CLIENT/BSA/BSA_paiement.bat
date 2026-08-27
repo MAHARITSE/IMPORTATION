@@ -2,8 +2,9 @@
 rem ============================================================
 rem  BSA_paiement.bat - Paiements de la societe BSA
 rem  Format : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
-rem  Convertit les PDF de ce dossier en :
-rem      BSA <MOIS> <MONTANT>.xlsx   (ex : BSA Avril 928 750.xlsx)
+rem  Convertit les PDF de ce dossier en Excel, classes par annee :
+rem      BSA\<ANNEE>\BSA <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+rem      ex : BSA\2026\BSA AVRIL 2026 27-01-26 a 23-02-26 MONTANT 928 750Ar.xlsx
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================
 chcp 65001 >nul

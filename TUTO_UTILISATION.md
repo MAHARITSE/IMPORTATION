@@ -183,16 +183,20 @@ PAIEMENT CLIENT/
 │   ├── BSA_paiement_to_excel.py           ← script du format BSA
 │   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
 │   ├── 17-04-2026 BFV-SG 1129370 ....pdf  ← les PDF BSA à convertir
-│   └── BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx   ← l'Excel produit
+│   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
+│       └── BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx ← l'Excel produit
 └── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
     ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
     ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
     ├── DISPENSAIRE LOTERANA ....pdf       ← les PDF MCI CARE à convertir
-    └── MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx ← l'Excel produit
+    └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
+        └── MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
 ```
 
 **Chaque société a son dossier avec SON script et SON .bat.** On dépose le PDF
 dans le dossier de sa société, puis on double-clique sur le .bat du dossier.
+Chaque Excel créé est rangé dans un sous-dossier **au nom de l'année du
+règlement** (`BSA/2026/…`, `MCI CARE/2025/…`), créé automatiquement si besoin.
 Si un PDF d'une autre société (ou d'un autre format) est déposé par erreur dans
 un dossier, le script l'ignore avec un message d'avertissement.
 Le nom du PDF lui-même n'a aucune importance.
@@ -227,25 +231,27 @@ python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf"   un seul PDF
 ### Nom du fichier Excel créé : SOCIÉTÉ + MOIS + ANNÉE + PÉRIODE + MONTANT
 
 ```
-exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 928 750.xlsx
-           └┬┘ └──┬──┘ └─┬─┘ └─────────┬──────────┘ └───┬────┘
-        société  mois   année   intervalle des dates    montant
-       (dossier)      du paiement     de soins          payé
+exemple : BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+                 └┬┘ └┬┘ └─┬─┘ └┬┘ └────────┬─────────┘ └──────┬──────┘
+   dossier    société mois année    intervalle des         montant
+   de l'année (dossier)        du paiement   dates de soins     payé
 
-exemple : MCI CARE MAI 2026 02-03-26 à 31-03-26 471 140.xlsx
+exemple : MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 ```
 
 | Pièce | Où le script la lit |
 |---|---|
+| **Dossier année** | année du règlement : les Excel sont rangés dans `SOCIETE/<ANNÉE>/` (`BSA/2026/…`) |
 | **Société** | fixée dans le script du dossier (`BSA` / `MCI CARE`) |
 | **Mois + année** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` |
-| **Intervalle des dates** | 1re et dernière date de soins des lignes (colonne `Date_Soins`), au format `JJ-MM-AA`. Une seule date si toutes les lignes tombent le même jour (`BSA JUILLET 2026 17-04-26 20 000.xlsx`) |
-| **Montant** | BSA : somme des `REMB` (= montant du virement) · MCI : somme des « Montant réglé » de toutes les pages du décompte |
+| **Intervalle des dates** | 1re et dernière date de soins des lignes (colonne `Date_Soins`), au format `JJ-MM-AA`. Une seule date si toutes les lignes tombent le même jour (`BSA JUILLET 2026 17-04-26 MONTANT 20 000Ar.xlsx`) |
+| **Montant** | BSA : somme des `REMB` (= montant du virement) · MCI : somme des « Montant réglé » de toutes les pages du décompte. Il est écrit entre le mot `MONTANT` et le suffixe `Ar` : `MONTANT 928 750Ar` |
 
 Le mois est en MAJUSCULES sans accent (`FEVRIER`, `AOUT`), comme pour les
 factures. Les dates de l'intervalle gardent l'année sur 2 chiffres (`25` = 2025),
 même quand elles ne sont pas de la même année que le paiement :
-`MCI CARE JANVIER 2026 03-11-25 à 16-11-25 206 000.xlsx`.
+`MCI CARE/2026/MCI CARE JANVIER 2026 03-11-25 à 16-11-25 MONTANT 206 000Ar.xlsx`
+(le dossier suit l'année du **règlement**, ici 2026, pas celle des soins).
 
 ### Colonnes produites (13)
 
