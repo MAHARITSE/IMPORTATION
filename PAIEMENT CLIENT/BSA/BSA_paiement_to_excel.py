@@ -449,8 +449,7 @@ def main():
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            # C'est l'utilisateur qui classe les PDF dans le dossier BSA :
-            # on parse toujours, sans filtrer sur le titre du document.
+            # Dossier BSA → parseur BSA. Le contenu du PDF ne change rien.
             meta, lignes = parse_bsa(pdf, nom_pdf)
 
         if not lignes:

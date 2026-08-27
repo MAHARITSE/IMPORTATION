@@ -330,8 +330,7 @@ def main():
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            # C'est l'utilisateur qui classe les PDF dans le dossier MCI CARE :
-            # on parse toujours, sans filtrer sur le titre du document.
+            # Dossier MCI CARE → parseur MCI CARE. Le contenu du PDF ne change rien.
             meta, lignes = parse_mci(pdf, nom_pdf)
 
         if not lignes:

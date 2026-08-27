@@ -224,23 +224,22 @@ PAIEMENT CLIENT/
         └── ASCOMA Janvier 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx ← l'Excel produit
 ```
 
-**Chaque société a son dossier avec SON script et SON .bat.** On dépose le PDF
-dans le sous-dossier **`PDF/` de sa société** (`BSA/PDF/`, `MCI CARE/PDF/`,
-`ASCOMA/PDF/`), puis on double-clique sur le .bat du dossier.
+**Règle : c'est le DOSSIER qui décide, pas le contenu du PDF.**
+
+| PDF déposé dans | Traité comme |
+|---|---|
+| `PAIEMENT CLIENT/BSA/` (ou `BSA/PDF/`) | **BSA** |
+| `PAIEMENT CLIENT/MCI CARE/` (ou `MCI CARE/PDF/`) | **MCI CARE** |
+| `PAIEMENT CLIENT/ASCOMA/` (ou `ASCOMA/PDF/`) | **ASCOMA** |
+
+Chaque société a son script et son .bat. On dépose le PDF dans le sous-dossier
+**`PDF/` de sa société**, puis on double-clique sur le .bat (ou `CONVERTIR.bat` choix 2).
 Chaque Excel créé est rangé dans un sous-dossier **au nom de l'année du
 règlement** (`BSA/2026/…`, `MCI CARE/2025/…`, `ASCOMA/2025/…`), créé
 automatiquement si besoin.
 Les PDF déposés directement dans le dossier de la société (ancienne habitude)
 sont quand même trouvés et convertis.
-C'est vous qui classez les PDF dans le bon dossier (BSA, MCI CARE, ASCOMA) :
-le script ne vérifie pas le titre du document, il parse et crée l'Excel.
 Le nom du PDF lui-même n'a aucune importance.
-
-| Dossier | Format parsé (vous classez, le script ne filtre pas sur le titre) |
-|---|---|
-| `BSA/` | relevé de remboursements BSA |
-| `MCI CARE/` | décompte de règlement MCI CARE |
-| `ASCOMA/` | décompte de règlement tiers payant |
 
 ### Utilisation
 

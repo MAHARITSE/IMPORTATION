@@ -28,7 +28,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from pdf_paiement_to_excel import (
     full_pdf_text,
     write_workbook,
-    societe_from_content,
     num,
     parse_date,
     fmt_amount,
@@ -135,16 +134,6 @@ def parse_ascoma(pdf, nom_pdf):
     return meta, lignes
 
 
-def societe_du_pdf(pdf_path, text):
-    """Société = nom du sous-dossier contenant le PDF (ex : ASCOMA/BNI/...).
-    Le sous-dossier PDF/ (réservé aux dépôts) et le dossier ASCOMA lui-même
-    ne comptent pas : on retombe alors sur ASCOMA."""
-    parent = os.path.basename(os.path.dirname(os.path.abspath(pdf_path)))
-    if parent not in (os.path.basename(PDF_DIR), "PDF"):
-        return parent
-    return societe_from_content(text) or SOCIETE
-
-
 def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
@@ -187,12 +176,10 @@ def main():
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            # C'est l'utilisateur qui classe les PDF dans le dossier ASCOMA :
-            # on parse toujours, sans filtrer sur le titre du document.
-            text = full_pdf_text(pdf)
+            # Dossier ASCOMA → parseur ASCOMA. Le contenu du PDF ne change rien.
             meta, lignes = parse_ascoma(pdf, nom_pdf)
 
-        societe = societe_du_pdf(pdf_path, text)
+        societe = SOCIETE  # toujours ASCOMA : c'est le dossier qui décide
         base_dir = os.path.dirname(ICI)                     # PAIEMENT CLIENT
 
         if not lignes:
