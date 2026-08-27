@@ -326,7 +326,7 @@ le paiement :
 
 | Colonne | BSA (relevé de remboursements) | MCI (décompte de règlement) | ASCOMA (tiers payant) |
 |---|---|---|---|
-| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée, suivi du nombre de lignes (`FA-02/MCI/26-047/10L` = 10 lignes) | (vide : pas de n° dans le PDF) |
+| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée, brut, comme les autres sociétés (`FA-02/MCI/26-047` — pas de suffixe « /10L ») | (vide : pas de n° dans le PDF) |
 | `Date_Reglement` | date du virement | date comptable | « Règlement du » (sinon « Edité le ») |
 | `Date_Soins` | date du soin (colonne DATE) | date de soins | date de soins |
 | `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire | bénéficiaire |

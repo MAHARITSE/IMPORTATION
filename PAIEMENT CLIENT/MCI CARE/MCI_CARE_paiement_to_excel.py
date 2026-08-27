@@ -13,10 +13,9 @@ Format traité (propre à MCI CARE) : DECOMPTE DE REGLEMENT FACTURES
       (#)Mtt non remboursé | Base décomptée | Ticket Modérateur |
       Montant réglé
 
-Numéro de bordereau / référence suivi du nombre de lignes :
-  la colonne Ref_Decompte reçoit le n° de facture du décompte suivi du
-  nombre de lignes de l'Excel (Numero_Facture_Prescription le garde brut) :
-      FA-02/MCI/26-047 avec 10 lignes  ->  FA-02/MCI/26-047/10L
+Ref_Decompte : le n° de facture du décompte, BRUT, comme les autres sociétés
+  (aucun suffixe « /<n>L » avec le nombre de lignes) :
+      FA-02/MCI/26-047  ->  Ref_Decompte = FA-02/MCI/26-047
 
 Utilisation (double-clic sur MCI_CARE_paiement.bat, ou invite de commandes) :
     python MCI_CARE_paiement_to_excel.py                    # tous les PDF du sous-dossier PDF/
@@ -205,22 +204,6 @@ def full_pdf_text(pdf):
 # --------------------------------------------------------------------------
 # Format MCI : DECOMPTE DE REGLEMENT FACTURES
 # --------------------------------------------------------------------------
-# Suffixe "/<n>L" déjà présent en fin de référence (à remplacer, jamais cumulé)
-SUFFIXE_LIGNES_RE = re.compile(r"/\d+L$", re.IGNORECASE)
-
-
-def ref_avec_lignes(facture, nb_lignes):
-    """N° de bordereau suivi du nombre de lignes du décompte.
-
-    FA-02/MCI/26-047 avec 10 lignes  ->  FA-02/MCI/26-047/10L
-
-    Un éventuel suffixe /<n>L déjà présent sur la référence du PDF est
-    d'abord retiré, pour ne jamais cumuler deux fois le nombre de lignes.
-    """
-    base = SUFFIXE_LIGNES_RE.sub("", str(facture).strip())
-    return f"{base}/{nb_lignes}L"
-
-
 def parse_mci(pdf, nom_pdf):
     """Extrait le méta du décompte et les lignes du tableau Matricule...Montant réglé."""
     text = full_pdf_text(pdf)
@@ -279,14 +262,8 @@ def parse_mci(pdf, nom_pdf):
                     "Montant_Exclu_Rejet": num(nonremb),
                     "Motif_Observation": obs,
                 })
-    # Le numéro de bordereau / référence (Ref_Decompte uniquement) doit
-    # être suivi du nombre de lignes du décompte :
-    # FA-02/MCI/26-047 -> FA-02/MCI/26-047/10L.
-    # Numero_Facture_Prescription garde le n° de facture sans suffixe.
-    if meta["facture"]:
-        ref = ref_avec_lignes(meta["facture"], len(lignes))
-        for l in lignes:
-            l["Ref_Decompte"] = ref
+    # Ref_Decompte = n° de facture du décompte, BRUT (comme BSA / ASCOMA) :
+    # pas de suffixe « /<n>L » indiquant le nombre de lignes.
     return meta, lignes
 
 
