@@ -331,7 +331,7 @@ le paiement :
 | `Date_Soins` | date du soin (colonne DATE) | date de soins | date de soins |
 | `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire | bénéficiaire |
 | `Matricule` | n° ADHESION | matricule | n° bénéficiaire (espaces retirés) |
-| `Numero_Facture_Prescription` | facture SALFA de chaque décompte (ex `FA-02/BFV/26-022`, ou `N°006-25/BFV/BSA/SA` en format 2025) | même facture, suivie du nombre de lignes (`FA-02/MCI/26-047/10L`) | (vide) |
+| `Numero_Facture_Prescription` | facture SALFA de chaque décompte (ex `FA-02/BFV/26-022`, ou `N°006-25/BFV/BSA/SA` en format 2025) | même facture | (vide) |
 | `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... | Code Rem. (`1`, `2`, `3`...) |
 | `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) | acte médical (`CONSULT. GENERALISTE`, `PHARMACIE`...) |
 | `Montant_Reclame_Brut` | FR.REELS | Montant réclamé | Montant réclamé |

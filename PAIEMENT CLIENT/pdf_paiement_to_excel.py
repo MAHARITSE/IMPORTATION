@@ -28,8 +28,8 @@ Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<DATE_PAIEMENT> <SOCIETE> <ANNEE> <PE
                PAIEMENT CLIENT/MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
 MCI CARE — numéro de bordereau / référence suivi du nombre de lignes :
-    les colonnes Ref_Decompte et Numero_Facture_Prescription reçoivent le
-    n° de facture du décompte suivi du nombre de lignes de l'Excel :
+    la colonne Ref_Decompte reçoit le n° de facture du décompte suivi du
+    nombre de lignes de l'Excel (Numero_Facture_Prescription le garde brut) :
         FA-02/MCI/26-047 avec 10 lignes  ->  FA-02/MCI/26-047/10L
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
@@ -530,14 +530,14 @@ def parse_mci(pdf, nom_pdf):
                     "Montant_Exclu_Rejet": num(nonremb),
                     "Motif_Observation": obs,
                 })
-    # Le numéro de bordereau / référence (Ref_Decompte et
-    # Numero_Facture_Prescription) doit être suivi du nombre de lignes
-    # du décompte : FA-02/MCI/26-047 -> FA-02/MCI/26-047/10L.
+    # Le numéro de bordereau / référence (Ref_Decompte uniquement) doit
+    # être suivi du nombre de lignes du décompte :
+    # FA-02/MCI/26-047 -> FA-02/MCI/26-047/10L.
+    # Numero_Facture_Prescription garde le n° de facture sans suffixe.
     if meta["facture"]:
         ref = ref_avec_lignes(meta["facture"], len(lignes))
         for l in lignes:
             l["Ref_Decompte"] = ref
-            l["Numero_Facture_Prescription"] = ref
     return meta, lignes
 
 
