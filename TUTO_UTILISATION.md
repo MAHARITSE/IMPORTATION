@@ -46,15 +46,18 @@ IMPORTATION/
     ├── BSA/                             ← PDF + Excel + script de la société BSA
     │   ├── BSA_paiement_to_excel.py     ← le script paiements BSA
     │   ├── BSA_paiement.bat             ← double-clic = conversion BSA
-    │   └── PDF/                         ← les PDF BSA se déposent ICI
+    │   ├── PDF/                         ← les PDF BSA se déposent ICI
+    │   └── ERREUR/                      ← (créé si besoin) les PDF en erreur sont déplacés ICI
     ├── MCI CARE/                        ← PDF + Excel + script de MCI CARE
     │   ├── MCI_CARE_paiement_to_excel.py ← le script paiements MCI CARE
     │   ├── MCI_CARE_paiement.bat         ← double-clic = conversion MCI CARE
-    │   └── PDF/                         ← les PDF MCI CARE se déposent ICI
+    │   ├── PDF/                         ← les PDF MCI CARE se déposent ICI
+    │   └── ERREUR/                      ← (créé si besoin) les PDF en erreur sont déplacés ICI
     └── ASCOMA/                          ← PDF + Excel + script d'ASCOMA
         ├── ASCOMA_to_excel.py           ← le script paiements ASCOMA
         ├── ASCOMA_paiement.bat          ← double-clic = conversion ASCOMA
-        └── PDF/                         ← les PDF ASCOMA se déposent ICI
+        ├── PDF/                         ← les PDF ASCOMA se déposent ICI
+        └── ERREUR/                      ← (créé si besoin) les PDF en erreur sont déplacés ICI
 ```
 
 Le script crée automatiquement un sous-dossier pour chaque nouvelle société détectée
@@ -206,6 +209,7 @@ PAIEMENT CLIENT/
 │   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
 │   ├── PDF/                               ← les PDF BSA à convertir (dépôt ici)
 │   │   └── 17-04-2026 BFV-SG 1129370 ....pdf
+│   ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
 │   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
 │       └── 17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx ← l'Excel produit
 ├── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
@@ -213,6 +217,7 @@ PAIEMENT CLIENT/
 │   ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
 │   ├── PDF/                               ← les PDF MCI CARE à convertir (dépôt ici)
 │   │   └── DISPENSAIRE LOTERANA ....pdf
+│   ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
 │   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
 │       └── 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
 └── ASCOMA/                                ← société ASCOMA (décomptes tiers payant)
@@ -220,6 +225,7 @@ PAIEMENT CLIENT/
     ├── ASCOMA_paiement.bat                ← double-clic = conversion ASCOMA
     ├── PDF/                               ← les PDF ASCOMA à convertir (dépôt ici)
     │   └── 7 035 543 23-01-25.pdf
+    ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
     └── 2025/                              ← dossier de l'ANNÉE du règlement (créé auto)
         └── 09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx ← l'Excel produit
 ```
@@ -325,7 +331,7 @@ le paiement :
 | `Date_Soins` | date du soin (colonne DATE) | date de soins | date de soins |
 | `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire | bénéficiaire |
 | `Matricule` | n° ADHESION | matricule | n° bénéficiaire (espaces retirés) |
-| `Numero_Facture_Prescription` | facture SALFA (ex `FA-02/BFV/26-022`) | même facture | (vide) |
+| `Numero_Facture_Prescription` | facture SALFA de chaque décompte (ex `FA-02/BFV/26-022`, ou `N°006-25/BFV/BSA/SA` en format 2025) | même facture | (vide) |
 | `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... | Code Rem. (`1`, `2`, `3`...) |
 | `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) | acte médical (`CONSULT. GENERALISTE`, `PHARMACIE`...) |
 | `Montant_Reclame_Brut` | FR.REELS | Montant réclamé | Montant réclamé |
@@ -348,3 +354,37 @@ le paiement :
   un message affiche le détail, ex : `Montant Réglé 7 565 100 Ar − remise 529 557 Ar = net 7 035 543 Ar`)
 - ❌ Si écart → ligne `!! ATTENTION : ...` affichée (à contrôler manuellement)
 - 🛡️ Sans `--force`, les Excel existants ne sont JAMAIS écrasés
+
+### 🚨 PDF en erreur — le sous-dossier `ERREUR` de chaque société
+
+Si un PDF ne peut **pas** être converti en Excel, le script ne s'arrête pas :
+il **crée automatiquement le sous-dossier `ERREUR` dans le dossier de la
+société** (`PAIEMENT CLIENT\BSA\ERREUR`, `MCI CARE\ERREUR`, `ASCOMA\ERREUR`)
+et y **déplace le PDF fautif**. Cas concernés :
+
+| Cas | Message affiché |
+|---|---|
+| PDF illisible ou corrompu | `!! ... : PDF illisible (...)` |
+| Format non reconnu / aucune ligne de règlement trouvée | `!! ... : aucune ligne de règlement trouvée (format non reconnu ?)` |
+| Date de règlement introuvable dans le PDF | `!! ... : date de règlement introuvable dans le PDF` |
+| Erreur pendant la création de l'Excel (ex : fichier ouvert dans Excel, verrouillé) | `!! ... : erreur pendant la création de l'Excel (...)` |
+
+En fin de traitement, un récapitulatif liste tous les PDF en erreur :
+
+```
+== 1 PDF en erreur, déplacés dans le sous-dossier ERREUR de BSA ==
+   - mon_fichier.pdf : PDF illisible ou corrompu
+```
+
+**Que faire ensuite ?**
+
+1. Ouvrir le PDF dans `SOCIETE\ERREUR` pour voir ce qui cloche
+   (mauvais dossier ? PDF tronqué ? pas un décompte de paiement ? Excel cible ouvert ?)
+2. Corriger le problème, puis **remettre le PDF dans le sous-dossier `PDF/`**
+   de la société et relancer la conversion.
+3. Les PDF du dossier `ERREUR` ne sont **jamais retraités** par les
+   conversions suivantes (pas de messages d'erreur répétés). Si un PDF y
+   arrive par erreur, il suffit de le resortir. S'il y a déjà un fichier du
+   même nom dans `ERREUR`, le nouveau est renommé `nom (1).pdf`, `nom (2).pdf`…
+4. Un PDF déplacé dans `ERREUR` n'a **pas** produit d'Excel : aucun fichier
+   incomplet n'est créé dans le dossier de l'année.

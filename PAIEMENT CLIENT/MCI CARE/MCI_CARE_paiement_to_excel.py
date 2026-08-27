@@ -29,6 +29,12 @@ Sortie : MCI CARE/<ANNEE>/<DATE_PAIEMENT> MCI CARE <ANNEE> <PERIODE> MONTANT <MO
     - MONTANT       : total payé (Total prestataire), précédé du mot "MONTANT"
                       et suivi de "Ar"
 
+PDF en erreur : si un PDF ne peut pas être converti (PDF illisible, format
+non reconnu, aucune ligne trouvée, date introuvable, erreur pendant la
+création de l'Excel), il est DÉPLACÉ dans le sous-dossier
+MCI CARE/ERREUR/ (créé automatiquement). Les PDF du dossier ERREUR ne sont
+pas retraités : remettez le PDF dans PDF/ après correction pour réessayer.
+
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
 """
@@ -36,6 +42,7 @@ import re
 import sys
 import glob
 import os
+import shutil
 import pdfplumber
 import openpyxl.styles
 from openpyxl import Workbook, load_workbook
@@ -283,6 +290,61 @@ def write_workbook(path, lignes):
 
 
 # --------------------------------------------------------------------------
+# Dossier des PDF en échec : MCI CARE/ERREUR (créé automatiquement si besoin).
+# Tout PDF impossible à convertir y est DÉPLACÉ, pour ne pas le confondre
+# avec les PDF en attente de conversion. Les PDF du dossier ERREUR ne sont
+# jamais retraités par les conversions suivantes : après correction, on
+# remet le PDF dans PDF/ pour réessayer.
+# --------------------------------------------------------------------------
+ERREUR_DIRNAME = "ERREUR"
+ERREURS = []        # [(nom du PDF, raison)] — récapitulatif en fin de traitement
+
+
+def dossier_erreur():
+    """Chemin du sous-dossier MCI CARE/ERREUR (créé si absent)."""
+    d = os.path.join(PDF_DIR, ERREUR_DIRNAME)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def est_dans_erreur(pdf_path):
+    """Vrai si le PDF se trouve déjà dans le sous-dossier ERREUR."""
+    parties = os.path.normpath(os.path.abspath(pdf_path)).split(os.sep)
+    return ERREUR_DIRNAME in parties
+
+
+def deplacer_pdf_en_erreur(pdf_path, raison):
+    """Déplace un PDF impossible à convertir dans MCI CARE/ERREUR.
+
+    Ne bouge pas le PDF si le déplacement échoue (fichier verrouillé...) :
+    le problème est affiché et le PDF sera retraité au prochain lancement.
+    """
+    dest = os.path.join(dossier_erreur(), os.path.basename(pdf_path))
+    base, ext = os.path.splitext(dest)
+    n = 1
+    while os.path.exists(dest):     # ne pas écraser un PDF déjà signalé
+        dest = f"{base} ({n}){ext}"
+        n += 1
+    try:
+        shutil.move(pdf_path, dest)
+        print(f"   -> PDF déplacé dans {ERREUR_DIRNAME} : "
+              f"{os.path.relpath(dest, PDF_DIR)}")
+        ERREURS.append((os.path.basename(pdf_path), raison))
+    except Exception as e:
+        print(f"   !! déplacement impossible vers {ERREUR_DIRNAME} : {e}")
+        ERREURS.append((os.path.basename(pdf_path), raison + f" (non déplacé : {e})"))
+
+
+def recap_erreurs():
+    """Affiche le récapitulatif des PDF en erreur (fin de traitement)."""
+    if ERREURS:
+        print(f"\n== {len(ERREURS)} PDF en erreur, déplacés dans "
+              f"le sous-dossier {ERREUR_DIRNAME} de {SOCIETE} ==")
+        for nom, raison in ERREURS:
+            print(f"   - {nom} : {raison}")
+
+
+# --------------------------------------------------------------------------
 def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
@@ -316,28 +378,41 @@ def main():
             print("!! Aucun des PDF demandés n'a été trouvé")
         else:
             print(f"!! Aucun PDF trouvé dans {PDF_SUBDIR}")
+        recap_erreurs()
         return
+    # Ne pas retraiter les PDF déjà mis de côté dans ERREUR
+    pdfs = [p for p in pdfs if not est_dans_erreur(p)]
 
     for pdf_path in pdfs:
         nom_pdf = os.path.basename(pdf_path)
         try:
             pdf = pdfplumber.open(pdf_path)
         except Exception as e:
-            print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
+            print(f"!! {nom_pdf} : PDF illisible ({e})")
+            deplacer_pdf_en_erreur(pdf_path, "PDF illisible ou corrompu")
             continue
-        with pdf:
-            # Dossier MCI CARE → parseur MCI CARE. Le contenu du PDF ne change rien.
-            meta, lignes = parse_mci(pdf, nom_pdf)
+        try:
+            with pdf:
+                # Dossier MCI CARE → parseur MCI CARE. Le contenu du PDF ne change rien.
+                meta, lignes = parse_mci(pdf, nom_pdf)
+        except Exception as e:
+            print(f"!! {nom_pdf} : erreur pendant la lecture du PDF "
+                  f"({type(e).__name__}: {e})")
+            deplacer_pdf_en_erreur(pdf_path, "erreur de lecture (format non reconnu ?)")
+            continue
 
         if not lignes:
-            print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
+            print(f"!! {nom_pdf} : aucune ligne de règlement trouvée "
+                  f"(format non reconnu ?)")
+            deplacer_pdf_en_erreur(pdf_path, "aucune ligne trouvée dans le PDF")
             continue
 
         # --- Nom du fichier : DATE_PAIEMENT MCI CARE ANNEE PERIODE MONTANT <montant>Ar,
         #     classé dans le sous-dossier de l'année du règlement ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
-            print(f"!! {nom_pdf} : date comptable introuvable -> ignoré")
+            print(f"!! {nom_pdf} : date comptable introuvable dans le PDF")
+            deplacer_pdf_en_erreur(pdf_path, "date comptable introuvable")
             continue
         date_reglement = parse_date(dr)          # 'AAAA-MM-JJ'
 
@@ -358,9 +433,17 @@ def main():
             print(f"-- {relatif} : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")
             continue
-        write_workbook(out, lignes)
+        try:
+            write_workbook(out, lignes)
+        except Exception as e:
+            print(f"!! {nom_pdf} : erreur pendant la création de l'Excel "
+                  f"({type(e).__name__}: {e})")
+            deplacer_pdf_en_erreur(pdf_path, "erreur de création de l'Excel")
+            continue
         print(f"OK {relatif} : {ref} | {len(lignes)} lignes | "
               f"Payé {fmt_amount(total_paye)} Ar  <- {nom_pdf}")
+
+    recap_erreurs()
 
 
 if __name__ == "__main__":

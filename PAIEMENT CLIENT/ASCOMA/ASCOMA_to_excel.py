@@ -14,13 +14,19 @@ Utilisation :
   python ASCOMA_to_excel.py                  tous les PDF du sous-dossier PDF/
   python ASCOMA_to_excel.py --force          régénérer (écrase l'Excel existant)
   python ASCOMA_to_excel.py "mon.pdf"        un seul PDF
+
+PDF en erreur : si un PDF ne peut pas être converti (PDF illisible, format
+non reconnu, aucune ligne trouvée, date introuvable, erreur pendant la
+création de l'Excel), il est DÉPLACÉ dans le sous-dossier ASCOMA/ERREUR/
+(créé automatiquement). Les PDF du dossier ERREUR ne sont pas retraités :
+remettez le PDF dans PDF/ après correction pour réessayer.
 """
 
 import os
 import sys
 import glob
 import re
-from openpyxl import Workbook
+import shutil
 import pdfplumber
 
 # Ajouter le répertoire parent pour importer pdf_paiement_to_excel
@@ -34,7 +40,6 @@ from pdf_paiement_to_excel import (
     amount_to_float,
     HEADERS,
     MONTANT_RE,
-    date_courte,
     nom_sortie,
 )
 
@@ -136,6 +141,61 @@ def parse_ascoma(pdf, nom_pdf):
     return meta, lignes
 
 
+# --------------------------------------------------------------------------
+# Dossier des PDF en échec : ASCOMA/ERREUR (créé automatiquement si besoin).
+# Tout PDF impossible à convertir y est DÉPLACÉ, pour ne pas le confondre
+# avec les PDF en attente de conversion. Les PDF du dossier ERREUR ne sont
+# jamais retraités par les conversions suivantes : après correction, on
+# remet le PDF dans PDF/ pour réessayer.
+# --------------------------------------------------------------------------
+ERREUR_DIRNAME = "ERREUR"
+ERREURS = []        # [(nom du PDF, raison)] — récapitulatif en fin de traitement
+
+
+def dossier_erreur():
+    """Chemin du sous-dossier ASCOMA/ERREUR (créé si absent)."""
+    d = os.path.join(ICI, ERREUR_DIRNAME)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def est_dans_erreur(pdf_path):
+    """Vrai si le PDF se trouve déjà dans le sous-dossier ERREUR."""
+    parties = os.path.normpath(os.path.abspath(pdf_path)).split(os.sep)
+    return ERREUR_DIRNAME in parties
+
+
+def deplacer_pdf_en_erreur(pdf_path, raison):
+    """Déplace un PDF impossible à convertir dans ASCOMA/ERREUR.
+
+    Ne bouge pas le PDF si le déplacement échoue (fichier verrouillé...) :
+    le problème est affiché et le PDF sera retraité au prochain lancement.
+    """
+    dest = os.path.join(dossier_erreur(), os.path.basename(pdf_path))
+    base, ext = os.path.splitext(dest)
+    n = 1
+    while os.path.exists(dest):     # ne pas écraser un PDF déjà signalé
+        dest = f"{base} ({n}){ext}"
+        n += 1
+    try:
+        shutil.move(pdf_path, dest)
+        print(f"   -> PDF déplacé dans {ERREUR_DIRNAME} : "
+              f"{os.path.relpath(dest, ICI)}")
+        ERREURS.append((os.path.basename(pdf_path), raison))
+    except Exception as e:
+        print(f"   !! déplacement impossible vers {ERREUR_DIRNAME} : {e}")
+        ERREURS.append((os.path.basename(pdf_path), raison + f" (non déplacé : {e})"))
+
+
+def recap_erreurs():
+    """Affiche le récapitulatif des PDF en erreur (fin de traitement)."""
+    if ERREURS:
+        print(f"\n== {len(ERREURS)} PDF en erreur, déplacés dans "
+              f"le sous-dossier {ERREUR_DIRNAME} de {SOCIETE} ==")
+        for nom, raison in ERREURS:
+            print(f"   - {nom} : {raison}")
+
+
 def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
@@ -163,11 +223,13 @@ def main():
             pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "*.pdf")))
         if not pdfs:
             pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "**", "*.pdf"), recursive=True))
+    pdfs = [p for p in pdfs if not est_dans_erreur(p)]   # ERREUR : on ne retente pas
     if not pdfs:
         if args:
             print("!! Aucun des PDF demandés n'a été trouvé")
         else:
             print(f"!! Aucun PDF trouvé dans {PDF_SUBDIR}")
+        recap_erreurs()
         return
 
     for pdf_path in pdfs:
@@ -175,11 +237,18 @@ def main():
         try:
             pdf = pdfplumber.open(pdf_path)
         except Exception as e:
-            print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
+            print(f"!! {nom_pdf} : PDF illisible ({e})")
+            deplacer_pdf_en_erreur(pdf_path, "PDF illisible ou corrompu")
             continue
-        with pdf:
-            # Dossier ASCOMA → parseur ASCOMA. Le contenu du PDF ne change rien.
-            meta, lignes = parse_ascoma(pdf, nom_pdf)
+        try:
+            with pdf:
+                # Dossier ASCOMA → parseur ASCOMA. Le contenu du PDF ne change rien.
+                meta, lignes = parse_ascoma(pdf, nom_pdf)
+        except Exception as e:
+            print(f"!! {nom_pdf} : erreur pendant la lecture du PDF "
+                  f"({type(e).__name__}: {e})")
+            deplacer_pdf_en_erreur(pdf_path, "erreur de lecture (format non reconnu ?)")
+            continue
 
         societe = SOCIETE  # toujours ASCOMA : c'est le dossier qui décide
         base_dir = os.path.dirname(ICI)                     # PAIEMENT CLIENT
@@ -190,29 +259,14 @@ def main():
         annee = date_reglement.split("-")[0] if date_reglement else ""
 
         if not lignes:
-            print(f"~ {nom_pdf} : aucune ligne extraite (structure differente) "
-                  f"-> creation d'un fichier Excel vide avec en-têtes")
-            out_dir = os.path.join(base_dir, societe, annee) if annee else os.path.join(base_dir, societe)
-            os.makedirs(out_dir, exist_ok=True)
-            out_name = re.sub(
-                r"\s+",
-                " ",
-                f"{date_courte(date_reglement)} {societe} {annee} MONTANT 0Ar.xlsx",
-            ).strip() if date_reglement else re.sub(
-                r"\s+", " ", f"{societe} MONTANT 0Ar.xlsx"
-            ).strip()
-            out_path = os.path.join(out_dir, out_name)
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Modele_Reglements"
-            ws.append(HEADERS)
-            ws.append([""] * len(HEADERS))
-            wb.save(out_path)
-            print(f"OK {out_path} : créé avec en-têtes uniquement  <- {nom_pdf}")
+            print(f"!! {nom_pdf} : aucune ligne extraite (structure differente ?)")
+            deplacer_pdf_en_erreur(pdf_path,
+                                   "aucune ligne de règlement trouvée dans le PDF")
             continue
 
         if not date_reglement:
-            print(f"!! {nom_pdf} : date de reglement introuvable -> ignoré")
+            print(f"!! {nom_pdf} : date de reglement introuvable dans le PDF")
+            deplacer_pdf_en_erreur(pdf_path, "date de règlement introuvable")
             continue
 
         # Contrôles automatiques
@@ -243,9 +297,17 @@ def main():
             print(f"-- {out_path} : existe déjà (--force pour écraser)  [{nom_pdf}]")
             continue
 
-        write_workbook(out_path, lignes)
+        try:
+            write_workbook(out_path, lignes)
+        except Exception as e:
+            print(f"!! {nom_pdf} : erreur pendant la création de l'Excel "
+                  f"({type(e).__name__}: {e})")
+            deplacer_pdf_en_erreur(pdf_path, "erreur de création de l'Excel")
+            continue
         print(f"OK {out_path} : {len(lignes)} lignes | "
               f"Payé {fmt_amount(total_paye)} Ar  <- {nom_pdf}")
+
+    recap_erreurs()
 
 
 if __name__ == "__main__":

@@ -29,11 +29,18 @@ Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<DATE_PAIEMENT> <SOCIETE> <ANNEE> <PE
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
+
+PDF en erreur : si un PDF ne peut pas être converti (PDF illisible, format
+non reconnu, aucune ligne trouvée, date introuvable, erreur pendant la
+création de l'Excel), il est DÉPLACÉ dans le sous-dossier ERREUR/ du dossier
+de sa société (ex : BSA/ERREUR/, créé automatiquement). Les PDF du dossier
+ERREUR ne sont pas retraités : remettez le PDF dans PDF/ après correction.
 """
 import re
 import sys
 import glob
 import os
+import shutil
 import unicodedata
 import pdfplumber
 import openpyxl.styles
@@ -62,6 +69,12 @@ DATA_RE = re.compile(
 
 # Ligne d'en-tête de bloc BSA : "1071921-1 ADHESION: 950179 NOM... CG Client: ..."
 BLOCK_RE = re.compile(r"^(\d{4,}-\d+)\s+ADHESION:\s*(\d+)\s+(.+)$")
+
+# N° de facture SALFA : "FA-02/BFV/26-022" (ancien format) ou
+# "N°006-25/BFV/BSA/SA" (format 2025). La ligne "Facture N°: N°006- ..." du
+# PDF est tronquée (les montants suivent tout de suite) : seul le n° COMPLET
+# de la ligne "Date facture: ..." est retenu.
+FACTURE_RE = re.compile(r"(FA-\d{2}[-/][\w/\-]*\d|N°\s*\d{2,4}[-/][\w/\-]*\w)")
 
 # Tokens qui marquent la fin d'un bloc (en-têtes de page, totaux, pied de page)
 STOP_TOKENS = {"SALFATU", "TOLIARY", "MADAGASCAR", "Andraharo", "RELEVE",
@@ -301,8 +314,8 @@ def parse_bsa(pdf, nom_pdf):
     text = "\n".join(l["text"] for l in lines)
 
     # --- Métadonnées du relevé ---
-    meta = {"ref": None, "lot": None, "date_reglement": None,
-            "virement": None, "facture": None, "nb_declare": None}
+    meta = {"ref": None, "lot": None, "date_reglement": None, "virement": None,
+            "facture": None, "factures_decompte": {}, "nb_declare": None}
     m = re.search(r"N°\s*:\s*(\d+)", text)
     if m:
         meta["ref"] = m.group(1)
@@ -315,12 +328,35 @@ def parse_bsa(pdf, nom_pdf):
     m = re.search(r"virement de ([\d\u00a0 ]+),(\d{2})\s*MGA", text)
     if m:
         meta["virement"] = amount_to_float(m.group(1) + "," + m.group(2))
-    for cand in re.findall(r"n°\s*:?\s*(FA-[\w/\-]+)", text):
-        if cand[-1].isdigit():          # le n° complet finit par un chiffre
-            meta["facture"] = cand
     m = re.search(r"Total général\s*:\s*(\d+)\s+(\d+)\s+", text)
     if m:
         meta["nb_declare"] = int(m.group(2))
+
+    # --- N° de facture SALFA, par décompte ---
+    #   "Total décompte : 1015497"
+    #   "Date facture: ... FACTURE SALFA TOLIARA N°006-25/BFV/BSA/SA"
+    # (dans cet ordre) -> factures_decompte["1015497"] = "N°006-25/BFV/BSA/SA".
+    # Un n° lu avant tout "Total décompte" (ancien format : un seul pour le
+    # relevé) est mémorisé dans meta["facture"] et servi à toutes les lignes.
+    cur_dec = None
+    for l in lines:
+        t = l["text"]
+        m = re.search(r"Total d[ée]compte\s*:?\s*(\d{4,})", t)
+        if m:
+            cur_dec = m.group(1)
+            continue
+        if "facture" not in t.lower():
+            continue
+        m = FACTURE_RE.search(t)
+        if m:
+            if cur_dec is not None:
+                meta["factures_decompte"].setdefault(cur_dec, m.group(1))
+            elif meta["facture"] is None:
+                meta["facture"] = m.group(1)
+    if meta["facture"] is None:      # ancien format : n° "FA-..." unique
+        for cand in re.findall(r"n°\s*:?\s*(FA-[\w/\-]+)", text):
+            if cand[-1].isdigit():   # le n° complet finit par un chiffre
+                meta["facture"] = cand
 
     # --- Blocs de remboursements ---
     blocks = []
@@ -389,13 +425,18 @@ def parse_bsa(pdf, nom_pdf):
         if amount_to_float(mut) > 0:
             motif += f" ; 1ère mutuelle : {fmt_amount(amount_to_float(mut))} Ar"
 
+        # Facture SALFA de CE décompte (format 2025), sinon celle du relevé.
+        decompte = b["num"].split("-")[0]
+        facture = (meta["factures_decompte"].get(decompte)
+                   or meta["facture"] or "")
+
         lignes.append({
             "Ref_Decompte": meta["ref"] or "",
             "Date_Reglement": parse_date(meta["date_reglement"]) if meta["date_reglement"] else "",
             "Date_Soins": parse_date(date),
             "Nom_Agent": nom,
             "Matricule": b["matricule"],
-            "Numero_Facture_Prescription": meta["facture"] or "",
+            "Numero_Facture_Prescription": facture,
             "Code_Acte": b["acte"],
             "Libelle_Acte": " ".join(b["libelle"]),
             "Montant_Reclame_Brut": num(fr),
@@ -509,6 +550,62 @@ def parseur_ascoma():
 
 
 # --------------------------------------------------------------------------
+# Dossier des PDF en échec : <SOCIETE>/ERREUR (créé automatiquement si besoin).
+# Tout PDF impossible à convertir y est DÉPLACÉ, pour ne pas le confondre
+# avec les PDF en attente de conversion. Les PDF du dossier ERREUR ne sont
+# jamais retraités par les conversions suivantes : après correction, on
+# remet le PDF dans PDF/ pour réessayer.
+# --------------------------------------------------------------------------
+ERREUR_DIRNAME = "ERREUR"
+ERREURS = []        # [(nom du PDF, société, raison)] — récapitulatif final
+
+
+def dossier_erreur(societe):
+    """Chemin du sous-dossier <SOCIETE>/ERREUR (créé si absent)."""
+    d = os.path.join(PDF_DIR, societe, ERREUR_DIRNAME)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def est_dans_erreur(pdf_path):
+    """Vrai si le PDF se trouve déjà dans un sous-dossier ERREUR."""
+    parties = os.path.normpath(os.path.abspath(pdf_path)).split(os.sep)
+    return ERREUR_DIRNAME in parties
+
+
+def deplacer_pdf_en_erreur(pdf_path, societe, raison):
+    """Déplace un PDF impossible à convertir dans <SOCIETE>/ERREUR.
+
+    Ne bouge pas le PDF si le déplacement échoue (fichier verrouillé...) :
+    le problème est affiché et le PDF sera retraité au prochain lancement.
+    """
+    dest = os.path.join(dossier_erreur(societe), os.path.basename(pdf_path))
+    base, ext = os.path.splitext(dest)
+    n = 1
+    while os.path.exists(dest):     # ne pas écraser un PDF déjà signalé
+        dest = f"{base} ({n}){ext}"
+        n += 1
+    try:
+        shutil.move(pdf_path, dest)
+        print(f"   -> PDF déplacé dans {societe}/{ERREUR_DIRNAME} : "
+              f"{os.path.relpath(dest, PDF_DIR)}")
+        ERREURS.append((os.path.basename(pdf_path), societe, raison))
+    except Exception as e:
+        print(f"   !! déplacement impossible vers {societe}/{ERREUR_DIRNAME} : {e}")
+        ERREURS.append((os.path.basename(pdf_path), societe,
+                        raison + f" (non déplacé : {e})"))
+
+
+def recap_erreurs():
+    """Affiche le récapitulatif des PDF en erreur (fin de traitement)."""
+    if ERREURS:
+        print(f"\n== {len(ERREURS)} PDF en erreur, déplacés dans le "
+              f"sous-dossier {ERREUR_DIRNAME} de leur société ==")
+        for nom, societe, raison in ERREURS:
+            print(f"   - [{societe}] {nom} : {raison}")
+
+
+# --------------------------------------------------------------------------
 def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
@@ -522,8 +619,11 @@ def main():
             pdfs.extend(glob.glob(os.path.join(d, "**", "*.pdf"), recursive=True))
     pdfs.extend(glob.glob(os.path.join(PDF_DIR, "*.pdf")))
     pdfs = sorted(set(os.path.abspath(p) for p in pdfs))
+    # Ne pas retraiter les PDF déjà mis de côté dans un dossier ERREUR
+    pdfs = [p for p in pdfs if not est_dans_erreur(p)]
     if not pdfs:
         print(f"!! Aucun PDF trouvé dans {PDF_DIR} (ni dans ses sous-dossiers)")
+        recap_erreurs()
         return
     for pdf_path in pdfs:
         nom_pdf = os.path.basename(pdf_path)
@@ -538,28 +638,41 @@ def main():
         try:
             pdf = pdfplumber.open(pdf_path)
         except Exception as e:
-            print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
+            print(f"!! {nom_pdf} : PDF illisible ({e})")
+            deplacer_pdf_en_erreur(pdf_path, societe, "PDF illisible ou corrompu")
             continue
-        with pdf:
-            if societe == "BSA":
-                kind = "bsa"
-                meta, lignes = parse_bsa(pdf, nom_pdf)
-            elif societe == "MCI CARE":
-                kind = "mci"
-                meta, lignes = parse_mci(pdf, nom_pdf)
-            else:  # ASCOMA
-                kind = "ascoma"
-                meta, lignes = parseur_ascoma()(pdf, nom_pdf)
+        try:
+            with pdf:
+                if societe == "BSA":
+                    kind = "bsa"
+                    meta, lignes = parse_bsa(pdf, nom_pdf)
+                elif societe == "MCI CARE":
+                    kind = "mci"
+                    meta, lignes = parse_mci(pdf, nom_pdf)
+                else:  # ASCOMA
+                    kind = "ascoma"
+                    meta, lignes = parseur_ascoma()(pdf, nom_pdf)
+        except Exception as e:
+            print(f"!! {nom_pdf} : erreur pendant la lecture du PDF "
+                  f"({type(e).__name__}: {e})")
+            deplacer_pdf_en_erreur(pdf_path, societe,
+                                   "erreur de lecture (format non reconnu ?)")
+            continue
 
         if not lignes:
-            print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
+            print(f"!! {nom_pdf} : aucune ligne de règlement trouvée "
+                  f"(format non reconnu ?)")
+            deplacer_pdf_en_erreur(pdf_path, societe,
+                                   "aucune ligne trouvée dans le PDF")
             continue
 
         # --- Nom du fichier : DATE_PAIEMENT SOCIETE ANNEE PERIODE MONTANT <montant>Ar,
         #     classé dans le sous-dossier <SOCIETE>/<ANNEE du règlement> ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
-            print(f"!! {nom_pdf} : date de règlement introuvable -> ignoré")
+            print(f"!! {nom_pdf} : date de règlement introuvable dans le PDF")
+            deplacer_pdf_en_erreur(pdf_path, societe,
+                                   "date de règlement introuvable")
             continue
         date_reglement = parse_date(dr)          # 'AAAA-MM-JJ'
 
@@ -595,9 +708,18 @@ def main():
             print(f"-- {relatif} : existe déjà, non écrasé "
                   f"(--force pour régénérer)  [{nom_pdf}]")
             continue
-        write_workbook(out, lignes)
+        try:
+            write_workbook(out, lignes)
+        except Exception as e:
+            print(f"!! {nom_pdf} : erreur pendant la création de l'Excel "
+                  f"({type(e).__name__}: {e})")
+            deplacer_pdf_en_erreur(pdf_path, societe,
+                                   "erreur de création de l'Excel")
+            continue
         print(f"OK {relatif} : {ref} | {len(lignes)} lignes | "
               f"Payé {fmt_amount(total_paye)} Ar  <- {nom_pdf}")
+
+    recap_erreurs()
 
 
 if __name__ == "__main__":
