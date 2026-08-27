@@ -90,11 +90,16 @@ facture.pdf   →  MCI JANVIER 2026.xlsx     (si c'est une facture MCI de janvie
    - **`1`** pour convertir les **FACTURES** (dossier FACTURE CLIENT)
    - **`2`** pour convertir les **PAIEMENTS** (dossier PAIEMENT CLIENT : BSA, MCI CARE, ASCOMA)
    - **`0`** pour **annuler** (aucune conversion)
-4. ✅ Récupérer chaque Excel dans **`FACTURE CLIENT/SOCIETE`** → `SOCIETE MOIS ANNEE.xlsx`
+4. ⌨️ Répondre à la question **« Ecraser les Excel existants pour les
+   régénérer ? (O/N) »** :
+   - **`O`** (oui) → les Excel existants sont **écrasés** et régénérés (= `--force`)
+   - **`N`** (non) → les Excel existants sont **conservés**, jamais écrasés
+5. ✅ Récupérer chaque Excel dans **`FACTURE CLIENT/SOCIETE`** → `SOCIETE MOIS ANNEE.xlsx`
    (par exemple **`FACTURE CLIENT/BSA/BSA JANVIER 2026.xlsx`**)
 
 C'est tout ! La fenêtre reste ouverte pour voir le résultat (appuyer sur une
-touche pour fermer). En cas de mauvaise touche, le menu se réaffiche.
+touche pour fermer). En cas de mauvaise touche, le menu (ou la question) se
+réaffiche.
 
 ---
 
@@ -113,6 +118,9 @@ python "FACTURE CLIENT\pdf_to_excel.py" --force      régénérer même si l'Exc
 > 🛡️ **Sans `--force`, les Excel existants ne sont JAMAIS écrasés** : vos
 > modifications manuelles sont protégées. Message affiché dans ce cas :
 > `-- MCI JUIN 2026.xlsx : existe déjà, non écrasé`
+>
+> 💡 C'est exactement ce que fait la question **O/N** de `CONVERTIR.bat` :
+> répondre `O` revient à relancer les scripts avec `--force`.
 
 ---
 
@@ -171,8 +179,9 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 2. Déposer les PDF dans FACTURE CLIENT      (n'importe quel nom)
 3. Double-cliquer CONVERTIR.bat             puis taper 1 (factures),
                                             2 (paiements) ou 0 (annuler)
-4. Excel dans FACTURE CLIENT/SOCIETE        -> SOCIETE MOIS ANNEE.xlsx
-5. Les PDF restent dans FACTURE CLIENT
+4. Répondre O (écraser les Excel existants) ou N (les conserver)
+5. Excel dans FACTURE CLIENT/SOCIETE        -> SOCIETE MOIS ANNEE.xlsx
+6. Les PDF restent dans FACTURE CLIENT
 ```
 
 ---
@@ -238,7 +247,18 @@ voulu puis Entrée** :
 ```
 
 Le choix `2` lance **chaque société de paiement une à une** (BSA, MCI CARE
-puis ASCOMA). Ou, société par société, double-cliquer sur le .bat du dossier :
+puis ASCOMA). Après le choix `1` ou `2`, `CONVERTIR.bat` demande :
+
+```
+Ecraser les Excel existants pour les regenerer ? (O/N)
+```
+
+- **`O`** : les Excel déjà présents sont **écrasés** et régénérés
+  (les scripts sont relancés avec `--force`) ;
+- **`N`** : ils sont **conservés** — seul le nouveau est créé
+  (comportement par défaut, vos modifications manuelles sont protégées).
+
+Ou, société par société, double-cliquer sur le .bat du dossier :
 
 ```
 PAIEMENT CLIENT\BSA\BSA_paiement.bat              tout convertir pour BSA
