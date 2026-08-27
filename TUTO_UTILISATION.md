@@ -232,15 +232,15 @@ règlement** (`BSA/2026/…`, `MCI CARE/2025/…`, `ASCOMA/2025/…`), créé
 automatiquement si besoin.
 Les PDF déposés directement dans le dossier de la société (ancienne habitude)
 sont quand même trouvés et convertis.
-Si un PDF d'une autre société (ou d'un autre format) est déposé par erreur dans
-un dossier, le script l'ignore avec un message d'avertissement.
+C'est vous qui classez les PDF dans le bon dossier (BSA, MCI CARE, ASCOMA) :
+le script ne vérifie pas le titre du document, il parse et crée l'Excel.
 Le nom du PDF lui-même n'a aucune importance.
 
-| Dossier | Format de paiement reconnu |
+| Dossier | Format parsé (vous classez, le script ne filtre pas sur le titre) |
 |---|---|
-| `BSA/` | `RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE` |
-| `MCI CARE/` | `DECOMPTE DE REGLEMENT FACTURES` |
-| `ASCOMA/` | `DECOMPTE DE REGLEMENT TIERS PAYANT` |
+| `BSA/` | relevé de remboursements BSA |
+| `MCI CARE/` | décompte de règlement MCI CARE |
+| `ASCOMA/` | décompte de règlement tiers payant |
 
 ### Utilisation
 

@@ -11,10 +11,10 @@ Usage :
     python "PAIEMENT CLIENT/pdf_paiement_to_excel.py" "MCI CARE" # uniquement MCI CARE
     python "PAIEMENT CLIENT/pdf_paiement_to_excel.py" --force    # régénérer même si l'Excel existe
 
-Deux formats de décompte sont reconnus (détectés dans le CONTENU du PDF) :
-  - BSA : "RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE" (ordre de virement +
-    lignes de remboursements par acte)
-  - MCI : "DECOMPTE DE REGLEMENT FACTURES" (tableau par bénéficiaire)
+Deux formats de décompte sont parsés (le dossier choisi par l'utilisateur
+détermine le parseur ; on ne refuse jamais un PDF sur son titre) :
+  - BSA : relevé de remboursements (ordre de virement + lignes par acte)
+  - MCI : décompte de règlement factures (tableau par bénéficiaire)
 
 Les PDF sont classés dans un sous-dossier par société (BSA/, MCI CARE/, ...) ;
 le nom du sous-dossier = la société. Un PDF posé directement dans
@@ -514,15 +514,27 @@ def main():
             continue
         with pdf:
             text = full_pdf_text(pdf)
-            kind = detect_kind(text)
+            # C'est l'utilisateur qui classe les PDF : le dossier détermine
+            # le parseur. On ne refuse jamais un PDF sur son titre.
+            parent = os.path.basename(os.path.dirname(os.path.abspath(pdf_path)))
+            parent_n = sans_accent(parent)
+            if parent_n == "BSA":
+                kind = "bsa"
+            elif parent_n in ("MCI CARE", "MCI"):
+                kind = "mci"
+            else:
+                kind = detect_kind(text)
+
             if kind == "bsa":
                 meta, lignes = parse_bsa(pdf, nom_pdf)
             elif kind == "mci":
                 meta, lignes = parse_mci(pdf, nom_pdf)
             else:
-                print(f"!! {nom_pdf} : type de décompte inconnu "
-                      f"(ni relevé BSA ni décompte MCI) -> ignoré")
-                continue
+                meta, lignes = parse_bsa(pdf, nom_pdf)
+                kind = "bsa"
+                if not lignes:
+                    meta, lignes = parse_mci(pdf, nom_pdf)
+                    kind = "mci"
 
         # Société : nom du sous-dossier ; à défaut, contenu du PDF
         parent = os.path.basename(os.path.dirname(os.path.abspath(pdf_path)))
