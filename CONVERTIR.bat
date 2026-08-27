@@ -15,7 +15,9 @@ rem  2) PAIEMENT CLIENT : paiements (assureurs) -> Excel
 rem     Un script par societe, adapte a son format de paiement :
 rem       PAIEMENT CLIENT\BSA\BSA_paiement_to_excel.py
 rem       PAIEMENT CLIENT\MCI CARE\MCI_CARE_paiement_to_excel.py
-rem       PAIEMENT CLIENT\ASCOMA\ASCOMA_to_excel.py  (PDF dans ASCOMA\PDF)
+rem       PAIEMENT CLIENT\ASCOMA\ASCOMA_to_excel.py
+rem     Les PDF se deposent dans le sous-dossier PDF\ de chaque societe :
+rem       PAIEMENT CLIENT\BSA\PDF,  MCI CARE\PDF,  ASCOMA\PDF
 rem     (double-clic possible aussi sur le .bat de chaque dossier)
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================

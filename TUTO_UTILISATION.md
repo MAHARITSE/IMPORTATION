@@ -45,10 +45,12 @@ IMPORTATION/
     ├── Modele_Import_Reglements_Decompte_Assurance.xlsx  — NE PAS RENOMMER
     ├── BSA/                             ← PDF + Excel + script de la société BSA
     │   ├── BSA_paiement_to_excel.py     ← le script paiements BSA
-    │   └── BSA_paiement.bat             ← double-clic = conversion BSA
+    │   ├── BSA_paiement.bat             ← double-clic = conversion BSA
+    │   └── PDF/                         ← les PDF BSA se déposent ICI
     ├── MCI CARE/                        ← PDF + Excel + script de MCI CARE
     │   ├── MCI_CARE_paiement_to_excel.py ← le script paiements MCI CARE
-    │   └── MCI_CARE_paiement.bat         ← double-clic = conversion MCI CARE
+    │   ├── MCI_CARE_paiement.bat         ← double-clic = conversion MCI CARE
+    │   └── PDF/                         ← les PDF MCI CARE se déposent ICI
     └── ASCOMA/                          ← PDF + Excel + script d'ASCOMA
         ├── ASCOMA_to_excel.py           ← le script paiements ASCOMA
         ├── ASCOMA_paiement.bat          ← double-clic = conversion ASCOMA
@@ -84,7 +86,8 @@ facture.pdf   →  MCI JANVIER 2026.xlsx     (si c'est une facture MCI de janvie
 ## 3. Utilisation quotidienne — la plus simple
 
 1. 📥 Déposer le(s) PDF dans le dossier mère **`FACTURE CLIENT`**
-   (pour les paiements : dans `PAIEMENT CLIENT/SOCIETE`, et `…/ASCOMA/PDF` pour ASCOMA)
+   (pour les paiements : dans le sous-dossier **`PDF/`** de la société —
+   `PAIEMENT CLIENT/BSA/PDF`, `MCI CARE/PDF` ou `ASCOMA/PDF`)
 2. 🖱️ **Double-cliquer sur `CONVERTIR.bat`**
 3. ⌨️ Au lancement, **taper le numéro voulu puis Entrée** :
    - **`1`** pour convertir les **FACTURES** (dossier FACTURE CLIENT)
@@ -201,13 +204,15 @@ PAIEMENT CLIENT/
 ├── BSA/                                   ← société BSA (relevés de remboursements)
 │   ├── BSA_paiement_to_excel.py           ← script du format BSA
 │   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
-│   ├── 17-04-2026 BFV-SG 1129370 ....pdf  ← les PDF BSA à convertir
+│   ├── PDF/                               ← les PDF BSA à convertir (dépôt ici)
+│   │   └── 17-04-2026 BFV-SG 1129370 ....pdf
 │   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
 │       └── BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx ← l'Excel produit
-└── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
+├── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
 │   ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
 │   ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
-│   ├── DISPENSAIRE LOTERANA ....pdf       ← les PDF MCI CARE à convertir
+│   ├── PDF/                               ← les PDF MCI CARE à convertir (dépôt ici)
+│   │   └── DISPENSAIRE LOTERANA ....pdf
 │   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
 │       └── MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
 └── ASCOMA/                                ← société ASCOMA (décomptes tiers payant)
@@ -220,11 +225,13 @@ PAIEMENT CLIENT/
 ```
 
 **Chaque société a son dossier avec SON script et SON .bat.** On dépose le PDF
-dans le dossier de sa société — **dans le sous-dossier `ASCOMA/PDF/` pour
-ASCOMA** — puis on double-clique sur le .bat du dossier.
+dans le sous-dossier **`PDF/` de sa société** (`BSA/PDF/`, `MCI CARE/PDF/`,
+`ASCOMA/PDF/`), puis on double-clique sur le .bat du dossier.
 Chaque Excel créé est rangé dans un sous-dossier **au nom de l'année du
 règlement** (`BSA/2026/…`, `MCI CARE/2025/…`, `ASCOMA/2025/…`), créé
 automatiquement si besoin.
+Les PDF déposés directement dans le dossier de la société (ancienne habitude)
+sont quand même trouvés et convertis.
 Si un PDF d'une autre société (ou d'un autre format) est déposé par erreur dans
 un dossier, le script l'ignore avec un message d'avertissement.
 Le nom du PDF lui-même n'a aucune importance.
@@ -269,11 +276,11 @@ PAIEMENT CLIENT\ASCOMA\ASCOMA_paiement.bat        tout convertir pour ASCOMA
 Ou en invite de commandes (dans le dossier de la société) :
 
 ```
-python BSA_paiement_to_excel.py                    tous les PDF BSA du dossier
+python BSA_paiement_to_excel.py                    tous les PDF du sous-dossier BSA\PDF
 python BSA_paiement_to_excel.py --force            régénérer (écrase l'Excel existant)
 python BSA_paiement_to_excel.py "mon_releve.pdf"   un seul PDF
 
-python MCI_CARE_paiement_to_excel.py               tous les PDF MCI CARE du dossier
+python MCI_CARE_paiement_to_excel.py               tous les PDF du sous-dossier MCI CARE\PDF
 python MCI_CARE_paiement_to_excel.py --force       régénérer
 python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf"   un seul PDF
 

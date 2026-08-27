@@ -162,7 +162,14 @@ def main():
     if args:
         pdfs = []
         for a in args:
-            p = a if os.path.isabs(a) else os.path.join(ICI, a)
+            if os.path.isabs(a):
+                p = a
+            else:
+                # nom relatif : d'abord dans le sous-dossier PDF/, sinon
+                # directement dans le dossier ASCOMA
+                p = os.path.join(PDF_SUBDIR, a)
+                if not os.path.isfile(p):
+                    p = os.path.join(ICI, a)
             if os.path.isfile(p) and p.lower().endswith(".pdf"):
                 pdfs.append(os.path.abspath(p))
             else:
