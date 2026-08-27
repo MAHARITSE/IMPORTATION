@@ -330,11 +330,7 @@ def main():
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            text = full_pdf_text(pdf)
-            if "DECOMPTE DE REGLEMENT FACTURES" not in text:
-                print(f"!! {nom_pdf} : ce n'est pas un décompte MCI CARE -> ignoré "
-                      f"(ce dossier est réservé aux PDF MCI CARE)")
-                continue
+            # Dossier MCI CARE → parseur MCI CARE. Le contenu du PDF ne change rien.
             meta, lignes = parse_mci(pdf, nom_pdf)
 
         if not lignes:

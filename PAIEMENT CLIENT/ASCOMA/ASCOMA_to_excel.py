@@ -28,7 +28,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from pdf_paiement_to_excel import (
     full_pdf_text,
     write_workbook,
-    societe_from_content,
     num,
     parse_date,
     fmt_amount,
@@ -44,9 +43,6 @@ PDF_DIR = ICI
 MODEL = os.path.join(os.path.dirname(ICI), "Modele_Import_Reglements_Decompte_Assurance.xlsx")
 SOCIETE = "ASCOMA"
 
-# Le décompte ASCOMA se reconnaît à ces mentions
-TIERS_PAYANT = ("Tiers Payant", "Décompte de Règlement", "Règlement Tiers Payant")
-
 DATE_JJ_MM_AAAA = re.compile(r"\d{2}/\d{2}/\d{4}")
 
 # Montants ASCOMA : la notation « 4 761 800,0 » (une seule décimale) existe
@@ -60,11 +56,6 @@ def dernier_montant_ascoma(ligne):
     """Dernier montant d'une ligne de total ASCOMA (gère « 4 761 800,0 »)."""
     trouves = MONTANT_ACOMA_RE.findall(ligne)
     return amount_to_float(trouves[-1]) if trouves else 0.0
-
-
-def est_tiers_payant(text):
-    """Vrai si le texte ressemble à un décompte de règlement tiers payant (ASCOMA)."""
-    return any(m in text for m in TIERS_PAYANT)
 
 
 # --------------------------------------------------------------------------
@@ -143,16 +134,6 @@ def parse_ascoma(pdf, nom_pdf):
     return meta, lignes
 
 
-def societe_du_pdf(pdf_path, text):
-    """Société = nom du sous-dossier contenant le PDF (ex : ASCOMA/BNI/...).
-    Le sous-dossier PDF/ (réservé aux dépôts) et le dossier ASCOMA lui-même
-    ne comptent pas : on retombe alors sur ASCOMA."""
-    parent = os.path.basename(os.path.dirname(os.path.abspath(pdf_path)))
-    if parent not in (os.path.basename(PDF_DIR), "PDF"):
-        return parent
-    return societe_from_content(text) or SOCIETE
-
-
 def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
@@ -195,14 +176,10 @@ def main():
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            text = full_pdf_text(pdf)
-            if not est_tiers_payant(text):
-                print(f"!! {nom_pdf} : ce n'est pas un décompte ASCOMA "
-                      f"(Décompte de Règlement Tiers Payant) -> ignoré")
-                continue
+            # Dossier ASCOMA → parseur ASCOMA. Le contenu du PDF ne change rien.
             meta, lignes = parse_ascoma(pdf, nom_pdf)
 
-        societe = societe_du_pdf(pdf_path, text)
+        societe = SOCIETE  # toujours ASCOMA : c'est le dossier qui décide
         base_dir = os.path.dirname(ICI)                     # PAIEMENT CLIENT
 
         if not lignes:

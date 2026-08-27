@@ -11,14 +11,10 @@ Usage :
     python "PAIEMENT CLIENT/pdf_paiement_to_excel.py" "MCI CARE" # uniquement MCI CARE
     python "PAIEMENT CLIENT/pdf_paiement_to_excel.py" --force    # régénérer même si l'Excel existe
 
-Deux formats de décompte sont reconnus (détectés dans le CONTENU du PDF) :
-  - BSA : "RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE" (ordre de virement +
-    lignes de remboursements par acte)
-  - MCI : "DECOMPTE DE REGLEMENT FACTURES" (tableau par bénéficiaire)
-
-Les PDF sont classés dans un sous-dossier par société (BSA/, MCI CARE/, ...) ;
-le nom du sous-dossier = la société. Un PDF posé directement dans
-PAIEMENT CLIENT est aussi accepté (société déduite du contenu du PDF).
+Règle : c'est le DOSSIER qui décide le traitement, pas le contenu du PDF.
+  - PDF dans BSA/       → parseur BSA
+  - PDF dans MCI CARE/  → parseur MCI CARE
+  - PDF dans ASCOMA/    → parseur ASCOMA
 Le nom du PDF lui-même n'a AUCUNE importance.
 
 Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
@@ -256,22 +252,35 @@ def full_pdf_text(pdf):
     return "\n".join((page.extract_text() or "") for page in pdf.pages)
 
 
-def detect_kind(text):
-    """'bsa' (relevé de remboursements) / 'mci' (décompte de règlement) / None."""
-    if "RELEVE DE REMBOURSEMENTS" in text:
-        return "bsa"
-    if "DECOMPTE DE REGLEMENT FACTURES" in text:
-        return "mci"
-    return None
+# Dossiers reconnus sous PAIEMENT CLIENT. Le nom du dossier = la société
+# et donc le parseur. On ne lit JAMAIS le contenu du PDF pour décider.
+DOSSIERS_SOCIETE = {
+    "BSA": "BSA",
+    "MCI CARE": "MCI CARE",
+    "MCI": "MCI CARE",
+    "ASCOMA": "ASCOMA",
+}
 
 
-def societe_from_content(text):
-    """Société déduite du contenu quand le PDF est hors sous-dossier."""
-    if "MCI CARE" in text:
-        return "MCI CARE"
-    if text.lstrip().startswith("BSA"):
-        return "BSA"
-    return None
+def societe_du_dossier(pdf_path):
+    """Société d'après le chemin du PDF (on remonte jusqu'à PAIEMENT CLIENT).
+
+    Exemples :
+        PAIEMENT CLIENT/BSA/PDF/a.pdf          → BSA
+        PAIEMENT CLIENT/MCI CARE/2026/a.pdf    → MCI CARE
+        PAIEMENT CLIENT/ASCOMA/PDF/a.pdf       → ASCOMA
+        PAIEMENT CLIENT/a.pdf                  → None  (pas dans un dossier société)
+    """
+    racine = os.path.abspath(PDF_DIR)
+    d = os.path.dirname(os.path.abspath(pdf_path))
+    while True:
+        nom = os.path.basename(d)
+        for dossier, societe in DOSSIERS_SOCIETE.items():
+            if sans_accent(nom) == sans_accent(dossier):
+                return societe
+        if os.path.abspath(d) == racine or d == os.path.dirname(d):
+            return None
+        d = os.path.dirname(d)
 
 
 # --------------------------------------------------------------------------
@@ -494,49 +503,58 @@ def write_workbook(path, lignes):
     wb.save(path)
 
 
+def parseur_ascoma():
+    """Import tardif : ASCOMA_to_excel importe déjà ce module."""
+    ascoma_dir = os.path.join(PDF_DIR, "ASCOMA")
+    if ascoma_dir not in sys.path:
+        sys.path.insert(0, ascoma_dir)
+    import ASCOMA_to_excel as ascoma  # noqa: WPS433
+    return ascoma.parse_ascoma
+
+
 # --------------------------------------------------------------------------
 def main():
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
     filtres = [sans_accent(a) for a in args]
 
-    pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "*.pdf"))
-                  + glob.glob(os.path.join(PDF_DIR, "*", "*.pdf")))
+    # PDF dans chaque dossier société (y compris PDF/) + éventuels PDF à la racine
+    pdfs = []
+    for nom in ("BSA", "MCI CARE", "ASCOMA"):
+        d = os.path.join(PDF_DIR, nom)
+        if os.path.isdir(d):
+            pdfs.extend(glob.glob(os.path.join(d, "**", "*.pdf"), recursive=True))
+    pdfs.extend(glob.glob(os.path.join(PDF_DIR, "*.pdf")))
+    pdfs = sorted(set(os.path.abspath(p) for p in pdfs))
     if not pdfs:
         print(f"!! Aucun PDF trouvé dans {PDF_DIR} (ni dans ses sous-dossiers)")
         return
     for pdf_path in pdfs:
         nom_pdf = os.path.basename(pdf_path)
+        # Le dossier décide : BSA / MCI CARE / ASCOMA. Jamais le contenu.
+        societe = societe_du_dossier(pdf_path)
+        if not societe:
+            print(f"!! {nom_pdf} : placez le PDF dans BSA, MCI CARE ou ASCOMA")
+            continue
+        if filtres and sans_accent(societe) not in filtres:
+            continue
+
         try:
             pdf = pdfplumber.open(pdf_path)
         except Exception as e:
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            text = full_pdf_text(pdf)
-            kind = detect_kind(text)
-            if kind == "bsa":
+            if societe == "BSA":
+                kind = "bsa"
                 meta, lignes = parse_bsa(pdf, nom_pdf)
-            elif kind == "mci":
+            elif societe == "MCI CARE":
+                kind = "mci"
                 meta, lignes = parse_mci(pdf, nom_pdf)
-            else:
-                print(f"!! {nom_pdf} : type de décompte inconnu "
-                      f"(ni relevé BSA ni décompte MCI) -> ignoré")
-                continue
+            else:  # ASCOMA
+                kind = "ascoma"
+                meta, lignes = parseur_ascoma()(pdf, nom_pdf)
 
-        # Société : nom du sous-dossier ; à défaut, contenu du PDF
-        parent = os.path.basename(os.path.dirname(os.path.abspath(pdf_path)))
-        if parent != os.path.basename(PDF_DIR):
-            societe = parent
-        else:
-            societe = societe_from_content(text)
-            if not societe:
-                print(f"!! {nom_pdf} : société introuvable "
-                      f"(placez le PDF dans un sous-dossier par société)")
-                continue
-
-        if filtres and sans_accent(societe) not in filtres:
-            continue
         if not lignes:
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
@@ -549,10 +567,10 @@ def main():
             continue
         date_reglement = parse_date(dr)          # 'AAAA-MM-JJ'
 
+        total_paye = sum(l["Montant_Paye_Regle"] for l in lignes)
         if kind == "bsa":
-            total_paye = sum(l["Montant_Paye_Regle"] for l in lignes)
-            ref = f"relevé N° {meta['ref']}" if meta["ref"] else "relevé"
-            if meta["virement"] is not None:
+            ref = f"relevé N° {meta['ref']}" if meta.get("ref") else "relevé"
+            if meta.get("virement") is not None:
                 ok = abs(total_paye - meta["virement"]) < 1
                 if ok:
                     print(f"   contrôle : {fmt_amount(total_paye)} Ar payés "
@@ -560,19 +578,19 @@ def main():
                 else:
                     print(f"   !! ATTENTION : {fmt_amount(total_paye)} Ar payés "
                           f"≠ montant du virement ({fmt_amount(meta['virement'])} Ar)")
-            if meta["nb_declare"] is not None and meta["nb_declare"] != len(lignes):
+            if meta.get("nb_declare") is not None and meta["nb_declare"] != len(lignes):
                 print(f"   !! ATTENTION : {len(lignes)} lignes lues, "
                       f"{meta['nb_declare']} déclarées dans le total général du relevé")
-        else:
-            # Montant payé = somme des "Montant réglé" des lignes (le total
-            # prestataire du PDF sert seulement de contrôle, ci-dessous).
-            total_paye = sum(l["Montant_Paye_Regle"] for l in lignes)
-            ref = f"facture {meta['facture']}" if meta["facture"] else "décompte"
-            if meta["total_prestataire"] is not None:
-                somme = sum(l["Montant_Paye_Regle"] for l in lignes)
-                if abs(somme - meta["total_prestataire"]) >= 1:
-                    print(f"   !! ATTENTION : {fmt_amount(somme)} Ar en lignes "
+        elif kind == "mci":
+            ref = f"facture {meta['facture']}" if meta.get("facture") else "décompte"
+            if meta.get("total_prestataire") is not None:
+                if abs(total_paye - meta["total_prestataire"]) >= 1:
+                    print(f"   !! ATTENTION : {fmt_amount(total_paye)} Ar en lignes "
                           f"≠ total prestataire ({fmt_amount(meta['total_prestataire'])} Ar)")
+        else:
+            ref = "décompte"
+            if meta.get("total_net") is not None and meta["total_net"] <= total_paye + 1:
+                total_paye = meta["total_net"]
 
         out = os.path.join(dossier_annee(societe, date_reglement),
                            nom_sortie(societe, date_reglement, lignes, total_paye))
