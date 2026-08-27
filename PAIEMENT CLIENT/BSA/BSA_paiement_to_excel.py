@@ -449,11 +449,7 @@ def main():
             print(f"!! {nom_pdf} : PDF illisible ({e}) -> ignoré")
             continue
         with pdf:
-            text = full_pdf_text(pdf)
-            if "RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE" not in text:
-                print(f"!! {nom_pdf} : ce n'est pas un relevé BSA -> ignoré "
-                      f"(ce dossier est réservé aux PDF BSA)")
-                continue
+            # Dossier BSA → parseur BSA. Le contenu du PDF ne change rien.
             meta, lignes = parse_bsa(pdf, nom_pdf)
 
         if not lignes:
