@@ -18,16 +18,16 @@ Utilisation (double-clic sur MCI_CARE_paiement.bat, ou invite de commandes) :
     python MCI_CARE_paiement_to_excel.py --force            # régénérer (écrase l'Excel existant)
     python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf" # un seul PDF (nom ou chemin)
 
-Sortie : MCI CARE/<ANNEE>/MCI CARE <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+Sortie : MCI CARE/<ANNEE>/<DATE_PAIEMENT> MCI CARE <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
     (sous-dossier <ANNEE> = année de la date comptable, créé automatiquement)
-    exemple : MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
-    - SOCIETE : MCI CARE (fixée dans ce script)
-    - MOIS    : mois de la date comptable du décompte, en MAJUSCULES
-    - ANNEE   : année de la date comptable (sert aussi de nom au sous-dossier)
-    - PERIODE : 1re et dernière date de soins du décompte, au format JJ-MM-AA
-                (une seule date si toutes les lignes sont du même jour)
-    - MONTANT : total payé (Total prestataire), précédé du mot "MONTANT"
-                et suivi de "Ar"
+    exemple : MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+    - DATE_PAIEMENT : date comptable du décompte, au format JJ-MM-AA
+    - SOCIETE       : MCI CARE (fixée dans ce script)
+    - ANNEE         : année de la date comptable (sert aussi de nom au sous-dossier)
+    - PERIODE       : 1re et dernière date de soins du décompte, au format JJ-MM-AA
+                      (une seule date si toutes les lignes sont du même jour)
+    - MONTANT       : total payé (Total prestataire), précédé du mot "MONTANT"
+                      et suivi de "Ar"
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
@@ -57,9 +57,6 @@ HEADERS = ["Ref_Decompte", "Date_Reglement", "Date_Soins", "Nom_Agent", "Matricu
            "Numero_Facture_Prescription", "Code_Acte", "Libelle_Acte",
            "Montant_Reclame_Brut", "Ticket_Moderateur", "Montant_Paye_Regle",
            "Montant_Exclu_Rejet", "Motif_Observation"]
-
-MONTHS = ["Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet",
-          "Aout", "Septembre", "Octobre", "Novembre", "Decembre"]
 
 
 def amount_to_float(s):
@@ -124,10 +121,10 @@ def parse_date(d):
 
 # --------------------------------------------------------------------------
 # Nom du fichier Excel de sortie
-#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-#   exemple : MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+#   <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+#   exemple : 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 # Classé dans un sous-dossier au nom de l'année du règlement :
-#   MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+#   MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 # --------------------------------------------------------------------------
 # Caractères interdits dans un nom de fichier Windows
 INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -162,14 +159,13 @@ def periode_soins(lignes, defaut=None):
 def nom_sortie(societe, date_reglement, lignes, montant):
     """Construit le nom du fichier Excel :
 
-        <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-        MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+        <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+        02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ' (date comptable du décompte).
     """
-    annee, mm, _ = date_reglement.split("-")
-    mois = MONTHS[int(mm) - 1].upper()
-    nom = (f"{societe} {mois} {annee} "
+    annee = date_reglement.split("-")[0]
+    nom = (f"{date_courte(date_reglement)} {societe} {annee} "
            f"{periode_soins(lignes, date_reglement)} "
            f"MONTANT {fmt_amount(montant)}Ar")
     nom = re.sub(r"\s+", " ", INVALIDES.sub(" ", nom)).strip()
@@ -180,7 +176,7 @@ def dossier_annee(date_reglement):
     """Chemin complet du dossier de l'année du règlement (créé si absent).
 
     Les Excel sont classés par année de la date comptable :
-        MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+        MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ'.
     """
@@ -337,7 +333,7 @@ def main():
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
 
-        # --- Nom du fichier : MCI CARE MOIS ANNEE PERIODE MONTANT <montant>Ar,
+        # --- Nom du fichier : DATE_PAIEMENT MCI CARE ANNEE PERIODE MONTANT <montant>Ar,
         #     classé dans le sous-dossier de l'année du règlement ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):

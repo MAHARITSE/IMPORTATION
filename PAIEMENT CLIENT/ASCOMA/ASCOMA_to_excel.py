@@ -8,7 +8,7 @@ Il utilise les fonctions de pdf_paiement_to_excel.py (dossier parent).
 Le PDF ASCOMA est un « Décompte de Règlement Tiers Payant » :
   - les PDF à convertir sont déposés dans le sous-dossier  ASCOMA/PDF/
   - l'Excel produit est rangé dans  PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/
-    nom : <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+    nom : <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
 
 Utilisation :
   python ASCOMA_to_excel.py                  tous les PDF du sous-dossier PDF/
@@ -34,6 +34,8 @@ from pdf_paiement_to_excel import (
     amount_to_float,
     HEADERS,
     MONTANT_RE,
+    date_courte,
+    nom_sortie,
 )
 
 # Chemins spécifiques à ASCOMA
@@ -182,12 +184,23 @@ def main():
         societe = SOCIETE  # toujours ASCOMA : c'est le dossier qui décide
         base_dir = os.path.dirname(ICI)                     # PAIEMENT CLIENT
 
+        # Date de règlement (JJ/MM/AAAA) -> AAAA-MM-JJ
+        dr = (meta.get("date_reglement") or "").strip()
+        date_reglement = parse_date(dr) if re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr) else ""
+        annee = date_reglement.split("-")[0] if date_reglement else ""
+
         if not lignes:
             print(f"~ {nom_pdf} : aucune ligne extraite (structure differente) "
                   f"-> creation d'un fichier Excel vide avec en-têtes")
-            out_dir = os.path.join(base_dir, societe)
+            out_dir = os.path.join(base_dir, societe, annee) if annee else os.path.join(base_dir, societe)
             os.makedirs(out_dir, exist_ok=True)
-            out_name = re.sub(r"\s+", " ", f"{societe} MONTANT 0Ar.xlsx").strip()
+            out_name = re.sub(
+                r"\s+",
+                " ",
+                f"{date_courte(date_reglement)} {societe} {annee} MONTANT 0Ar.xlsx",
+            ).strip() if date_reglement else re.sub(
+                r"\s+", " ", f"{societe} MONTANT 0Ar.xlsx"
+            ).strip()
             out_path = os.path.join(out_dir, out_name)
             wb = Workbook()
             ws = wb.active
@@ -198,13 +211,9 @@ def main():
             print(f"OK {out_path} : créé avec en-têtes uniquement  <- {nom_pdf}")
             continue
 
-        # Date de règlement (JJ/MM/AAAA) -> AAAA-MM-JJ
-        dr = (meta.get("date_reglement") or "").strip()
-        if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
+        if not date_reglement:
             print(f"!! {nom_pdf} : date de reglement introuvable -> ignoré")
             continue
-        date_reglement = parse_date(dr)
-        annee = date_reglement.split("-")[0]
 
         # Contrôles automatiques
         total_lignes = sum(l["Montant_Paye_Regle"] for l in lignes)
@@ -224,34 +233,10 @@ def main():
                 print(f"   !! ATTENTION : net récapitulatif {fmt_amount(meta['total_net'])} Ar "
                       f"> somme des lignes {fmt_amount(total_lignes)} Ar")
 
-        # Mois en français (sans accent) pour le nom du fichier
-        mois_map = {
-            "01": "Janvier", "02": "Fevrier", "03": "Mars", "04": "Avril",
-            "05": "Mai", "06": "Juin", "07": "Juillet", "08": "Aout",
-            "09": "Septembre", "10": "Octobre", "11": "Novembre", "12": "Decembre",
-        }
-        mois_fr = mois_map.get(date_reglement.split("-")[1], "Inconnu")
-
-        # Période de soins : 1re et dernière date (format JJ-MM-AA)
-        def date_courte(iso):
-            annee2, mois, jour = iso.split("-")
-            return f"{jour}-{mois}-{annee2[2:]}"
-
-        dates_iso = [l["Date_Soins"] for l in lignes
-                     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", l["Date_Soins"])]
-        if dates_iso:
-            debut, fin = dates_iso[0], dates_iso[-1]
-            periode = date_courte(debut) if debut == fin \
-                else f"{date_courte(debut)} à {date_courte(fin)}"
-        else:
-            periode = ""
-
         # Chemin de sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/
         out_dir = os.path.join(base_dir, societe, annee)
         os.makedirs(out_dir, exist_ok=True)
-        out_name = re.sub(r"\s+", " ",
-                          f"{societe} {mois_fr} {annee} {periode} "
-                          f"MONTANT {fmt_amount(total_paye)}Ar.xlsx").strip()
+        out_name = nom_sortie(societe, date_reglement, lignes, total_paye)
         out_path = os.path.join(out_dir, out_name)
 
         if os.path.exists(out_path) and not force:

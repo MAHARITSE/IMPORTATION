@@ -22,16 +22,16 @@ Utilisation (double-clic sur BSA_paiement.bat, ou invite de commandes) :
     python BSA_paiement_to_excel.py --force            # régénérer (écrase l'Excel existant)
     python BSA_paiement_to_excel.py "mon_releve.pdf"   # un seul PDF (nom ou chemin)
 
-Sortie : BSA/<ANNEE>/BSA <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+Sortie : BSA/<ANNEE>/<DATE_PAIEMENT> BSA <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
     (sous-dossier <ANNEE> = année du virement, créé automatiquement)
-    exemple : BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
-    - SOCIETE : BSA (fixée dans ce script)
-    - MOIS    : mois du virement (ligne "A , le 17/04/2026"), en MAJUSCULES
-    - ANNEE   : année du virement (sert aussi de nom au sous-dossier)
-    - PERIODE : 1re et dernière date de soins du relevé, au format JJ-MM-AA
-                (une seule date si toutes les lignes sont du même jour)
-    - MONTANT : total payé (somme des REMB = montant du virement),
-                précédé du mot "MONTANT" et suivi de "Ar"
+    exemple : BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+    - DATE_PAIEMENT : date du virement (ligne "A , le 17/04/2026"), au format JJ-MM-AA
+    - SOCIETE       : BSA (fixée dans ce script)
+    - ANNEE         : année du virement (sert aussi de nom au sous-dossier)
+    - PERIODE       : 1re et dernière date de soins du relevé, au format JJ-MM-AA
+                      (une seule date si toutes les lignes sont du même jour)
+    - MONTANT       : total payé (somme des REMB = montant du virement),
+                      précédé du mot "MONTANT" et suivi de "Ar"
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
@@ -62,9 +62,6 @@ HEADERS = ["Ref_Decompte", "Date_Reglement", "Date_Soins", "Nom_Agent", "Matricu
            "Numero_Facture_Prescription", "Code_Acte", "Libelle_Acte",
            "Montant_Reclame_Brut", "Ticket_Moderateur", "Montant_Paye_Regle",
            "Montant_Exclu_Rejet", "Motif_Observation"]
-
-MONTHS = ["Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet",
-          "Aout", "Septembre", "Octobre", "Novembre", "Decembre"]
 
 # Montant malgache : "15 000,00" / "0,00" / "112 500,00"
 AMT = r"(?:\d{1,3}(?:[ \u00a0]\d{3})*|\d+),\d{2}"
@@ -139,10 +136,10 @@ def parse_date(d):
 
 # --------------------------------------------------------------------------
 # Nom du fichier Excel de sortie
-#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-#   exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+#   <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+#   exemple : 17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 # Classé dans un sous-dossier au nom de l'année du règlement :
-#   BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+#   BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 # --------------------------------------------------------------------------
 # Caractères interdits dans un nom de fichier Windows
 INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -177,14 +174,13 @@ def periode_soins(lignes, defaut=None):
 def nom_sortie(societe, date_reglement, lignes, montant):
     """Construit le nom du fichier Excel :
 
-        <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-        BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+        <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+        17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ' (date du virement / date comptable).
     """
-    annee, mm, _ = date_reglement.split("-")
-    mois = MONTHS[int(mm) - 1].upper()
-    nom = (f"{societe} {mois} {annee} "
+    annee = date_reglement.split("-")[0]
+    nom = (f"{date_courte(date_reglement)} {societe} {annee} "
            f"{periode_soins(lignes, date_reglement)} "
            f"MONTANT {fmt_amount(montant)}Ar")
     nom = re.sub(r"\s+", " ", INVALIDES.sub(" ", nom)).strip()
@@ -195,7 +191,7 @@ def dossier_annee(date_reglement):
     """Chemin complet du dossier de l'année du règlement (créé si absent).
 
     Les Excel sont classés par année du règlement :
-        BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+        BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ'.
     """
@@ -456,7 +452,7 @@ def main():
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
 
-        # --- Nom du fichier : BSA MOIS ANNEE PERIODE MONTANT <montant>Ar,
+        # --- Nom du fichier : DATE_PAIEMENT BSA ANNEE PERIODE MONTANT <montant>Ar,
         #     classé dans le sous-dossier de l'année du règlement ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
