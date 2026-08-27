@@ -2,8 +2,9 @@
 rem ============================================================
 rem  MCI_CARE_paiement.bat - Paiements de la societe MCI CARE
 rem  Format : DECOMPTE DE REGLEMENT FACTURES
-rem  Convertit les PDF de ce dossier en :
-rem      MCI CARE <MOIS> <MONTANT>.xlsx   (ex : MCI CARE Mai 471 140.xlsx)
+rem  Convertit les PDF de ce dossier en Excel, classes par annee :
+rem      MCI CARE\<ANNEE>\MCI CARE <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+rem      ex : MCI CARE\2026\MCI CARE MAI 2026 02-03-26 a 31-03-26 MONTANT 471 140Ar.xlsx
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================
 chcp 65001 >nul
