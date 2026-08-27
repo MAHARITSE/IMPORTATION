@@ -5,8 +5,8 @@ rem  Format : DECOMPTE DE REGLEMENT TIERS PAYANT
 rem  Les PDF a convertir se deposent dans le sous-dossier PDF :
 rem      ASCOMA\PDF\....pdf
 rem  Convertit les PDF en Excel, classes par annee :
-rem      PAIEMENT CLIENT\ASCOMA\<ANNEE>\ASCOMA <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-rem      ex : ASCOMA\2025\ASCOMA Janvier 2025 13-05-24 a 31-08-24 MONTANT 7 035 543Ar.xlsx
+rem      PAIEMENT CLIENT\ASCOMA\<ANNEE>\<DATE_PAIEMENT> ASCOMA <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+rem      ex : ASCOMA\2025\09-01-25 ASCOMA 2025 13-05-24 a 31-08-24 MONTANT 7 035 543Ar.xlsx
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================
 chcp 65001 >nul

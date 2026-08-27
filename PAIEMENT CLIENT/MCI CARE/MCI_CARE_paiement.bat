@@ -5,8 +5,8 @@ rem  Format : DECOMPTE DE REGLEMENT FACTURES
 rem  Les PDF a convertir se deposent dans le sous-dossier PDF :
 rem      MCI CARE\PDF\....pdf
 rem  Convertit les PDF en Excel, classes par annee :
-rem      MCI CARE\<ANNEE>\MCI CARE <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-rem      ex : MCI CARE\2026\MCI CARE MAI 2026 02-03-26 a 31-03-26 MONTANT 471 140Ar.xlsx
+rem      MCI CARE\<ANNEE>\<DATE_PAIEMENT> MCI CARE <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+rem      ex : MCI CARE\2026\02-05-26 MCI CARE 2026 02-03-26 a 31-03-26 MONTANT 471 140Ar.xlsx
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================
 chcp 65001 >nul

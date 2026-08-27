@@ -17,15 +17,15 @@ Règle : c'est le DOSSIER qui décide le traitement, pas le contenu du PDF.
   - PDF dans ASCOMA/    → parseur ASCOMA
 Le nom du PDF lui-même n'a AUCUNE importance.
 
-Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
     (sous-dossier <ANNEE> = année du règlement, créé automatiquement)
-    - SOCIETE : nom du sous-dossier (ex : "MCI CARE")
-    - MOIS    : mois du règlement (virement BSA / date comptable MCI), MAJUSCULES
-    - ANNEE   : année du règlement (sert aussi de nom au sous-dossier)
-    - PERIODE : 1re et dernière date de soins payées, au format JJ-MM-AA
-    - MONTANT : total payé par l'assureur, précédé du mot "MONTANT" et suivi de "Ar"
-    exemples : PAIEMENT CLIENT/BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
-               PAIEMENT CLIENT/MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+    - DATE_PAIEMENT : date du règlement, au format JJ-MM-AA
+    - SOCIETE       : nom du sous-dossier (ex : "MCI CARE")
+    - ANNEE         : année du règlement (sert aussi de nom au sous-dossier)
+    - PERIODE       : 1re et dernière date de soins payées, au format JJ-MM-AA
+    - MONTANT       : total payé par l'assureur, précédé du mot "MONTANT" et suivi de "Ar"
+    exemples : PAIEMENT CLIENT/BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+               PAIEMENT CLIENT/MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
 modifications manuelles), sauf avec l'option --force.
@@ -51,9 +51,6 @@ HEADERS = ["Ref_Decompte", "Date_Reglement", "Date_Soins", "Nom_Agent", "Matricu
            "Numero_Facture_Prescription", "Code_Acte", "Libelle_Acte",
            "Montant_Reclame_Brut", "Ticket_Moderateur", "Montant_Paye_Regle",
            "Montant_Exclu_Rejet", "Motif_Observation"]
-
-MONTHS = ["Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet",
-          "Aout", "Septembre", "Octobre", "Novembre", "Decembre"]
 
 # Montant malgache : "15 000,00" / "0,00" / "112 500,00"
 AMT = r"(?:\d{1,3}(?:[ \u00a0]\d{3})*|\d+),\d{2}"
@@ -141,11 +138,11 @@ def parse_date(d):
 
 # --------------------------------------------------------------------------
 # Nom du fichier Excel de sortie
-#   <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-#   exemple : BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
-#           : MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+#   <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+#   exemple : 17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+#           : 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 # Classé dans un sous-dossier au nom de l'année du règlement :
-#   BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+#   BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 # --------------------------------------------------------------------------
 # Caractères interdits dans un nom de fichier Windows
 INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -180,14 +177,13 @@ def periode_soins(lignes, defaut=None):
 def nom_sortie(societe, date_reglement, lignes, montant):
     """Construit le nom du fichier Excel :
 
-        <SOCIETE> <MOIS> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-        BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+        <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+        17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ' (virement BSA / date comptable MCI).
     """
-    annee, mm, _ = date_reglement.split("-")
-    mois = MONTHS[int(mm) - 1].upper()
-    nom = (f"{societe} {mois} {annee} "
+    annee = date_reglement.split("-")[0]
+    nom = (f"{date_courte(date_reglement)} {societe} {annee} "
            f"{periode_soins(lignes, date_reglement)} "
            f"MONTANT {fmt_amount(montant)}Ar")
     nom = re.sub(r"\s+", " ", INVALIDES.sub(" ", nom)).strip()
@@ -198,7 +194,7 @@ def dossier_annee(societe, date_reglement):
     """Chemin complet du dossier <SOCIETE>/<ANNEE> (créé si absent).
 
     Les Excel sont classés par société puis par année du règlement :
-        BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+        BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ'.
     """
@@ -559,7 +555,7 @@ def main():
             print(f"!! {nom_pdf} : aucune ligne trouvée -> ignoré")
             continue
 
-        # --- Nom du fichier : SOCIETE MOIS ANNEE PERIODE MONTANT <montant>Ar,
+        # --- Nom du fichier : DATE_PAIEMENT SOCIETE ANNEE PERIODE MONTANT <montant>Ar,
         #     classé dans le sous-dossier <SOCIETE>/<ANNEE du règlement> ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
