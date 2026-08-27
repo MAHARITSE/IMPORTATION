@@ -326,12 +326,12 @@ le paiement :
 
 | Colonne | BSA (relevé de remboursements) | MCI (décompte de règlement) | ASCOMA (tiers payant) |
 |---|---|---|---|
-| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée | (vide : pas de n° dans le PDF) |
+| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée, suivi du nombre de lignes (`FA-02/MCI/26-047/10L` = 10 lignes) | (vide : pas de n° dans le PDF) |
 | `Date_Reglement` | date du virement | date comptable | « Règlement du » (sinon « Edité le ») |
 | `Date_Soins` | date du soin (colonne DATE) | date de soins | date de soins |
 | `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire | bénéficiaire |
 | `Matricule` | n° ADHESION | matricule | n° bénéficiaire (espaces retirés) |
-| `Numero_Facture_Prescription` | facture SALFA de chaque décompte (ex `FA-02/BFV/26-022`, ou `N°006-25/BFV/BSA/SA` en format 2025) | même facture | (vide) |
+| `Numero_Facture_Prescription` | facture SALFA de chaque décompte (ex `FA-02/BFV/26-022`, ou `N°006-25/BFV/BSA/SA` en format 2025) | même facture, suivie du nombre de lignes (`FA-02/MCI/26-047/10L`) | (vide) |
 | `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... | Code Rem. (`1`, `2`, `3`...) |
 | `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) | acte médical (`CONSULT. GENERALISTE`, `PHARMACIE`...) |
 | `Montant_Reclame_Brut` | FR.REELS | Montant réclamé | Montant réclamé |
