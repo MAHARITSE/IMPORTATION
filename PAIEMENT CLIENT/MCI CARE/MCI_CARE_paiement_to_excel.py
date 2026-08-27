@@ -14,7 +14,7 @@ Format traité (propre à MCI CARE) : DECOMPTE DE REGLEMENT FACTURES
       Montant réglé
 
 Utilisation (double-clic sur MCI_CARE_paiement.bat, ou invite de commandes) :
-    python MCI_CARE_paiement_to_excel.py                    # tous les PDF du dossier
+    python MCI_CARE_paiement_to_excel.py                    # tous les PDF du sous-dossier PDF/
     python MCI_CARE_paiement_to_excel.py --force            # régénérer (écrase l'Excel existant)
     python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf" # un seul PDF (nom ou chemin)
 
@@ -41,11 +41,13 @@ import openpyxl.styles
 from openpyxl import Workbook, load_workbook
 
 # Le script se trouve dans le dossier de la société MCI CARE.
-# Les PDF à convertir sont déposés dans ce même dossier.
+# Les PDF à convertir sont déposés dans le sous-dossier "PDF" de ce dossier
+# (MCI CARE/PDF/) ; à défaut, ils sont cherchés directement dans MCI CARE.
 # Le modèle Excel est dans le dossier parent "PAIEMENT CLIENT".
 # Les Excel produits sont classés dans un sous-dossier au nom de l'année
 # de la date comptable (ex : MCI CARE/2026/...), créé automatiquement.
 PDF_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_SUBDIR = os.path.join(PDF_DIR, "PDF")
 MODEL = os.path.join(os.path.dirname(PDF_DIR),
                      "Modele_Import_Reglements_Decompte_Assurance.xlsx")
 SHEET = "Modele_Reglements"
@@ -293,18 +295,31 @@ def main():
     pdfs = []
     if args:
         for a in args:
-            p = os.path.join(PDF_DIR, a) if not os.path.isabs(a) else a
+            if os.path.isabs(a):
+                p = a
+            else:
+                # nom relatif : d'abord dans le sous-dossier PDF/, sinon
+                # directement dans le dossier de la société
+                p = os.path.join(PDF_SUBDIR, a)
+                if not os.path.isfile(p):
+                    p = os.path.join(PDF_DIR, a)
             if os.path.isfile(p) and p.lower().endswith(".pdf"):
                 pdfs.append(os.path.abspath(p))
             else:
                 print(f"!! PDF introuvable : {a}")
     else:
-        pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "*.pdf")))
+        # PDF déposés dans le sous-dossier PDF/ ; à défaut, directement dans
+        # le dossier de la société, puis recherche récursive.
+        pdfs = sorted(glob.glob(os.path.join(PDF_SUBDIR, "*.pdf")))
+        if not pdfs:
+            pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "*.pdf")))
+        if not pdfs:
+            pdfs = sorted(glob.glob(os.path.join(PDF_DIR, "**", "*.pdf"), recursive=True))
     if not pdfs:
         if args:
             print("!! Aucun des PDF demandés n'a été trouvé")
         else:
-            print(f"!! Aucun PDF trouvé dans {PDF_DIR}")
+            print(f"!! Aucun PDF trouvé dans {PDF_SUBDIR}")
         return
 
     for pdf_path in pdfs:

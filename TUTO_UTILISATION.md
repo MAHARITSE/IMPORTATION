@@ -30,7 +30,7 @@ pip install pdfplumber openpyxl
 
 ```
 IMPORTATION/
-├── CONVERTIR.bat                        ← double-clic = conversion (Windows)
+├── CONVERTIR.bat                        ← double-clic = menu : 1 factures / 2 paiements / 0 annuler
 ├── FACTURE CLIENT/                      ← dossier mère des FACTURES
 │   ├── pdf_to_excel.py                  ← le script factures
 │   ├── Modele_Import.xlsx               ← le modèle (11 colonnes) — NE PAS RENOMMER
@@ -45,10 +45,16 @@ IMPORTATION/
     ├── Modele_Import_Reglements_Decompte_Assurance.xlsx  — NE PAS RENOMMER
     ├── BSA/                             ← PDF + Excel + script de la société BSA
     │   ├── BSA_paiement_to_excel.py     ← le script paiements BSA
-    │   └── BSA_paiement.bat             ← double-clic = conversion BSA
-    └── MCI CARE/                        ← PDF + Excel + script de MCI CARE
-        ├── MCI_CARE_paiement_to_excel.py ← le script paiements MCI CARE
-        └── MCI_CARE_paiement.bat         ← double-clic = conversion MCI CARE
+    │   ├── BSA_paiement.bat             ← double-clic = conversion BSA
+    │   └── PDF/                         ← les PDF BSA se déposent ICI
+    ├── MCI CARE/                        ← PDF + Excel + script de MCI CARE
+    │   ├── MCI_CARE_paiement_to_excel.py ← le script paiements MCI CARE
+    │   ├── MCI_CARE_paiement.bat         ← double-clic = conversion MCI CARE
+    │   └── PDF/                         ← les PDF MCI CARE se déposent ICI
+    └── ASCOMA/                          ← PDF + Excel + script d'ASCOMA
+        ├── ASCOMA_to_excel.py           ← le script paiements ASCOMA
+        ├── ASCOMA_paiement.bat          ← double-clic = conversion ASCOMA
+        └── PDF/                         ← les PDF ASCOMA se déposent ICI
 ```
 
 Le script crée automatiquement un sous-dossier pour chaque nouvelle société détectée
@@ -80,12 +86,23 @@ facture.pdf   →  MCI JANVIER 2026.xlsx     (si c'est une facture MCI de janvie
 ## 3. Utilisation quotidienne — la plus simple
 
 1. 📥 Déposer le(s) PDF dans le dossier mère **`FACTURE CLIENT`**
+   (pour les paiements : dans le sous-dossier **`PDF/`** de la société —
+   `PAIEMENT CLIENT/BSA/PDF`, `MCI CARE/PDF` ou `ASCOMA/PDF`)
 2. 🖱️ **Double-cliquer sur `CONVERTIR.bat`**
-3. ✅ Récupérer chaque Excel dans **`FACTURE CLIENT/SOCIETE`** → `SOCIETE MOIS ANNEE.xlsx`
+3. ⌨️ Au lancement, **taper le numéro voulu puis Entrée** :
+   - **`1`** pour convertir les **FACTURES** (dossier FACTURE CLIENT)
+   - **`2`** pour convertir les **PAIEMENTS** (dossier PAIEMENT CLIENT : BSA, MCI CARE, ASCOMA)
+   - **`0`** pour **annuler** (aucune conversion)
+4. ⌨️ Répondre à la question **« Ecraser les Excel existants pour les
+   régénérer ? (O/N) »** :
+   - **`O`** (oui) → les Excel existants sont **écrasés** et régénérés (= `--force`)
+   - **`N`** (non) → les Excel existants sont **conservés**, jamais écrasés
+5. ✅ Récupérer chaque Excel dans **`FACTURE CLIENT/SOCIETE`** → `SOCIETE MOIS ANNEE.xlsx`
    (par exemple **`FACTURE CLIENT/BSA/BSA JANVIER 2026.xlsx`**)
 
 C'est tout ! La fenêtre reste ouverte pour voir le résultat (appuyer sur une
-touche pour fermer).
+touche pour fermer). En cas de mauvaise touche, le menu (ou la question) se
+réaffiche.
 
 ---
 
@@ -104,6 +121,9 @@ python "FACTURE CLIENT\pdf_to_excel.py" --force      régénérer même si l'Exc
 > 🛡️ **Sans `--force`, les Excel existants ne sont JAMAIS écrasés** : vos
 > modifications manuelles sont protégées. Message affiché dans ce cas :
 > `-- MCI JUIN 2026.xlsx : existe déjà, non écrasé`
+>
+> 💡 C'est exactement ce que fait la question **O/N** de `CONVERTIR.bat` :
+> répondre `O` revient à relancer les scripts avec `--force`.
 
 ---
 
@@ -160,9 +180,11 @@ la ligne « Total » imprimée en bas de la facture PDF. Ils doivent être égau
 ```
 1. pip install pdfplumber openpyxl          (une seule fois)
 2. Déposer les PDF dans FACTURE CLIENT      (n'importe quel nom)
-3. Double-cliquer CONVERTIR.bat
-4. Excel dans FACTURE CLIENT/SOCIETE        -> SOCIETE MOIS ANNEE.xlsx
-5. Les PDF restent dans FACTURE CLIENT
+3. Double-cliquer CONVERTIR.bat             puis taper 1 (factures),
+                                            2 (paiements) ou 0 (annuler)
+4. Répondre O (écraser les Excel existants) ou N (les conserver)
+5. Excel dans FACTURE CLIENT/SOCIETE        -> SOCIETE MOIS ANNEE.xlsx
+6. Les PDF restent dans FACTURE CLIENT
 ```
 
 ---
@@ -182,21 +204,34 @@ PAIEMENT CLIENT/
 ├── BSA/                                   ← société BSA (relevés de remboursements)
 │   ├── BSA_paiement_to_excel.py           ← script du format BSA
 │   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
-│   ├── 17-04-2026 BFV-SG 1129370 ....pdf  ← les PDF BSA à convertir
+│   ├── PDF/                               ← les PDF BSA à convertir (dépôt ici)
+│   │   └── 17-04-2026 BFV-SG 1129370 ....pdf
 │   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
 │       └── BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx ← l'Excel produit
-└── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
-    ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
-    ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
-    ├── DISPENSAIRE LOTERANA ....pdf       ← les PDF MCI CARE à convertir
-    └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
-        └── MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
+├── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
+│   ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
+│   ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
+│   ├── PDF/                               ← les PDF MCI CARE à convertir (dépôt ici)
+│   │   └── DISPENSAIRE LOTERANA ....pdf
+│   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
+│       └── MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
+└── ASCOMA/                                ← société ASCOMA (décomptes tiers payant)
+    ├── ASCOMA_to_excel.py                 ← script du format ASCOMA
+    ├── ASCOMA_paiement.bat                ← double-clic = conversion ASCOMA
+    ├── PDF/                               ← les PDF ASCOMA à convertir (dépôt ici)
+    │   └── 7 035 543 23-01-25.pdf
+    └── 2025/                              ← dossier de l'ANNÉE du règlement (créé auto)
+        └── ASCOMA Janvier 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx ← l'Excel produit
 ```
 
 **Chaque société a son dossier avec SON script et SON .bat.** On dépose le PDF
-dans le dossier de sa société, puis on double-clique sur le .bat du dossier.
+dans le sous-dossier **`PDF/` de sa société** (`BSA/PDF/`, `MCI CARE/PDF/`,
+`ASCOMA/PDF/`), puis on double-clique sur le .bat du dossier.
 Chaque Excel créé est rangé dans un sous-dossier **au nom de l'année du
-règlement** (`BSA/2026/…`, `MCI CARE/2025/…`), créé automatiquement si besoin.
+règlement** (`BSA/2026/…`, `MCI CARE/2025/…`, `ASCOMA/2025/…`), créé
+automatiquement si besoin.
+Les PDF déposés directement dans le dossier de la société (ancienne habitude)
+sont quand même trouvés et convertis.
 Si un PDF d'une autre société (ou d'un autre format) est déposé par erreur dans
 un dossier, le script l'ignore avec un message d'avertissement.
 Le nom du PDF lui-même n'a aucune importance.
@@ -205,27 +240,53 @@ Le nom du PDF lui-même n'a aucune importance.
 |---|---|
 | `BSA/` | `RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE` |
 | `MCI CARE/` | `DECOMPTE DE REGLEMENT FACTURES` |
+| `ASCOMA/` | `DECOMPTE DE REGLEMENT TIERS PAYANT` |
 
 ### Utilisation
 
-`CONVERTIR.bat` lance les factures puis **chaque société de paiement une à
-une**. Ou, société par société, double-cliquer sur le .bat du dossier :
+**`CONVERTIR.bat`** demande au lancement quoi convertir — **taper le numéro
+voulu puis Entrée** :
+
+```
+1  -  les FACTURES   (dossier FACTURE CLIENT)
+2  -  les PAIEMENTS  (dossier PAIEMENT CLIENT)
+0  -  annuler
+```
+
+Le choix `2` lance **chaque société de paiement une à une** (BSA, MCI CARE
+puis ASCOMA). Après le choix `1` ou `2`, `CONVERTIR.bat` demande :
+
+```
+Ecraser les Excel existants pour les regenerer ? (O/N)
+```
+
+- **`O`** : les Excel déjà présents sont **écrasés** et régénérés
+  (les scripts sont relancés avec `--force`) ;
+- **`N`** : ils sont **conservés** — seul le nouveau est créé
+  (comportement par défaut, vos modifications manuelles sont protégées).
+
+Ou, société par société, double-cliquer sur le .bat du dossier :
 
 ```
 PAIEMENT CLIENT\BSA\BSA_paiement.bat              tout convertir pour BSA
 PAIEMENT CLIENT\MCI CARE\MCI_CARE_paiement.bat    tout convertir pour MCI CARE
+PAIEMENT CLIENT\ASCOMA\ASCOMA_paiement.bat        tout convertir pour ASCOMA
 ```
 
 Ou en invite de commandes (dans le dossier de la société) :
 
 ```
-python BSA_paiement_to_excel.py                    tous les PDF BSA du dossier
+python BSA_paiement_to_excel.py                    tous les PDF du sous-dossier BSA\PDF
 python BSA_paiement_to_excel.py --force            régénérer (écrase l'Excel existant)
 python BSA_paiement_to_excel.py "mon_releve.pdf"   un seul PDF
 
-python MCI_CARE_paiement_to_excel.py               tous les PDF MCI CARE du dossier
+python MCI_CARE_paiement_to_excel.py               tous les PDF du sous-dossier MCI CARE\PDF
 python MCI_CARE_paiement_to_excel.py --force       régénérer
 python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf"   un seul PDF
+
+python ASCOMA_to_excel.py                          tous les PDF du sous-dossier ASCOMA\PDF
+python ASCOMA_to_excel.py --force                  régénérer
+python ASCOMA_to_excel.py "mon_decompte.pdf"       un seul PDF
 ```
 
 ### Nom du fichier Excel créé : SOCIÉTÉ + MOIS + ANNÉE + PÉRIODE + MONTANT
@@ -237,15 +298,17 @@ exemple : BSA/2026/BSA AVRIL 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
    de l'année (dossier)        du paiement   dates de soins     payé
 
 exemple : MCI CARE/2026/MCI CARE MAI 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+
+exemple : ASCOMA/2025/ASCOMA Janvier 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
 ```
 
 | Pièce | Où le script la lit |
 |---|---|
 | **Dossier année** | année du règlement : les Excel sont rangés dans `SOCIETE/<ANNÉE>/` (`BSA/2026/…`) |
-| **Société** | fixée dans le script du dossier (`BSA` / `MCI CARE`) |
-| **Mois + année** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` |
+| **Société** | fixée dans le script du dossier (`BSA` / `MCI CARE` / `ASCOMA`) |
+| **Mois + année** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` · ASCOMA : `Règlement du JJ/MM/AAAA` (sinon `Edité le`) |
 | **Intervalle des dates** | 1re et dernière date de soins des lignes (colonne `Date_Soins`), au format `JJ-MM-AA`. Une seule date si toutes les lignes tombent le même jour (`BSA JUILLET 2026 17-04-26 MONTANT 20 000Ar.xlsx`) |
-| **Montant** | BSA : somme des `REMB` (= montant du virement) · MCI : somme des « Montant réglé » de toutes les pages du décompte. Il est écrit entre le mot `MONTANT` et le suffixe `Ar` : `MONTANT 928 750Ar` |
+| **Montant** | BSA : somme des `REMB` (= montant du virement) · MCI : somme des « Montant réglé » de toutes les pages du décompte · ASCOMA : « Montant Net » du récapitulatif final (= Montant réglé − remise, le montant réellement payé). Il est écrit entre le mot `MONTANT` et le suffixe `Ar` : `MONTANT 928 750Ar` |
 
 Le mois est en MAJUSCULES sans accent (`FEVRIER`, `AOUT`), comme pour les
 factures. Les dates de l'intervalle gardent l'année sur 2 chiffres (`25` = 2025),
@@ -255,21 +318,21 @@ même quand elles ne sont pas de la même année que le paiement :
 
 ### Colonnes produites (13)
 
-| Colonne | BSA (relevé de remboursements) | MCI (décompte de règlement) |
-|---|---|---|
-| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée |
-| `Date_Reglement` | date du virement | date comptable |
-| `Date_Soins` | date du soin (colonne DATE) | date de soins |
-| `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire |
-| `Matricule` | n° ADHESION | matricule |
-| `Numero_Facture_Prescription` | facture SALFA (ex `FA-02/BFV/26-022`) | même facture |
-| `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... |
-| `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) |
-| `Montant_Reclame_Brut` | FR.REELS | Montant réclamé |
-| `Ticket_Moderateur` | TPG* | Montant réclamé − Montant réglé |
-| `Montant_Paye_Regle` | REMB | Montant réglé |
-| `Montant_Exclu_Rejet` | NON REMB | Mtt non remboursé |
-| `Motif_Observation` | `Prise en charge : 95%` | `Ticket modérateur 10%` |
+| Colonne | BSA (relevé de remboursements) | MCI (décompte de règlement) | ASCOMA (tiers payant) |
+|---|---|---|---|
+| `Ref_Decompte` | N° du relevé (`1129370`) | N° de la facture réglée | (vide : pas de n° dans le PDF) |
+| `Date_Reglement` | date du virement | date comptable | « Règlement du » (sinon « Edité le ») |
+| `Date_Soins` | date du soin (colonne DATE) | date de soins | date de soins |
+| `Nom_Agent` | nom du patient (aligné à la date du soin) | bénéficiaire | bénéficiaire |
+| `Matricule` | n° ADHESION | matricule | n° bénéficiaire (espaces retirés) |
+| `Numero_Facture_Prescription` | facture SALFA (ex `FA-02/BFV/26-022`) | même facture | (vide) |
+| `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... | Code Rem. (`1`, `2`, `3`...) |
+| `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) | acte médical (`CONSULT. GENERALISTE`, `PHARMACIE`...) |
+| `Montant_Reclame_Brut` | FR.REELS | Montant réclamé | Montant réclamé |
+| `Ticket_Moderateur` | TPG* | Montant réclamé − Montant réglé | Ticket modérateur |
+| `Montant_Paye_Regle` | REMB | Montant réglé | Montant réglé |
+| `Montant_Exclu_Rejet` | NON REMB | Mtt non remboursé | Montant exclu |
+| `Motif_Observation` | `Prise en charge : 95%` | `Ticket modérateur 10%` | (vide) |
 
 ### Vérifications automatiques
 
@@ -278,5 +341,10 @@ même quand elles ne sont pas de la même année que le paiement :
 - ✅ MCI : somme des « Montant réglé » = « Total prestataire »
   (les totaux de toutes les pages du décompte sont additionnés : un PDF couvre
   parfois plusieurs établissements — PHIE, LABO, IMAGERIE, DISPENSAIRE)
+- ✅ ASCOMA : somme des « Montant réglé » = somme des « S/Total Prestataire »
+  (un par établissement)
+- ✅ ASCOMA : le « Montant Net » du récapitulatif final = Montant réglé − remise
+  (c'est ce montant réellement payé qui est écrit dans le nom du fichier ;
+  un message affiche le détail, ex : `Montant Réglé 7 565 100 Ar − remise 529 557 Ar = net 7 035 543 Ar`)
 - ❌ Si écart → ligne `!! ATTENTION : ...` affichée (à contrôler manuellement)
 - 🛡️ Sans `--force`, les Excel existants ne sont JAMAIS écrasés
