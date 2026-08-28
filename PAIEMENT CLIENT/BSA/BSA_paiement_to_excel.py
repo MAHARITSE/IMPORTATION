@@ -15,6 +15,9 @@ Format traité (propre à BSA) : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
        15 000,00 0,00 95,00 14 250,00 750,00 0,00"
       (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx (%) |
        REMB | NON REMB | TPG*)
+      Note : dans le PDF BSA, NON_REMB inclut le TPG (ticket modérateur).
+      Le vrai montant exclu/rejet = NON_REMB - TPG.
+      La cohérence est : FR.REELS = REMB + (NON_REMB - TPG).
   - page finale : facture SALFA (n° FA-...) et "Total général".
 
 Utilisation (double-clic sur BSA_paiement.bat, ou invite de commandes) :
@@ -277,6 +280,8 @@ def parse_bsa(pdf, nom_pdf):
                  15 000,00 0,00 95,00 14 250,00 750,00 0,00"
                  (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx |
                   REMB | NON REMB | TPG*)
+      Note : Montant_Exclu_Rejet = NON_REMB - TPG (le NON_REMB du PDF
+      inclut le ticket modérateur ; les vraies exclusions = NON_REMB - TPG).
       lignes 3+ : suite du nom (colonne de gauche, x<125) puis libellé de
                  l'acte / médicament (x>=125), tant que la ligne n'est pas un
                  en-tête de page, un total ou le pied de page.
@@ -415,7 +420,7 @@ def parse_bsa(pdf, nom_pdf):
             "Montant_Reclame_Brut": num(fr),
             "Ticket_Moderateur": num(tpg),
             "Montant_Paye_Regle": num(remb),
-            "Montant_Exclu_Rejet": num(nonremb),
+            "Montant_Exclu_Rejet": max(0, num(nonremb) - num(tpg)),
             "Motif_Observation": motif,
         })
     return meta, lignes
