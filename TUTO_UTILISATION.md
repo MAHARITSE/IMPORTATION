@@ -335,13 +335,19 @@ le paiement :
 | `Code_Acte` | CG, PH, ECH, EB, DC, SI, SUP... | PH, LABO, ... | Code Rem. (`1`, `2`, `3`...) |
 | `Libelle_Acte` | médicament / acte détaillé | (vide si non détaillé) | acte médical (`CONSULT. GENERALISTE`, `PHARMACIE`...) |
 | `Montant_Reclame_Brut` | FR.REELS | Montant réclamé | Montant réclamé |
-| `Ticket_Moderateur` | TPG* | Montant réclamé − Montant réglé | Ticket modérateur |
+| `Ticket_Moderateur` | Tx (%) — taux de prise en charge | Montant réclamé − Montant réglé | Ticket modérateur |
 | `Montant_Paye_Regle` | REMB | Montant réglé | Montant réglé |
-| `Montant_Exclu_Rejet` | NON REMB | Mtt non remboursé | Montant exclu |
+| `Montant_Exclu_Rejet` | **le reste = FR.REELS − REMB** (= 0 si FR.REELS = REMB) | Mtt non remboursé | Montant exclu |
 | `Motif_Observation` | `Prise en charge : 95%` | `Ticket modérateur 10%` | (vide) |
 
 ### Vérifications automatiques
 
+- ✅ BSA : **règle du reste** — le reste (`Montant_Exclu_Rejet`) = `FR.REELS − REMB`,
+  donc **si FR.REELS = REMB alors le reste = 0** ; le reste est contrôlé sur
+  chaque ligne contre `NON_REMB − TPG` (le NON_REMB du PDF inclut le TPG) :
+  tout écart est signalé `!! INCOHÉRENCE ...` (console + `Motif_Observation`)
+  et un récapitulatif s'affiche :
+  `cohérence : 51 lignes vérifiées — si FR.REELS = REMB alors le reste = 0  OK`
 - ✅ BSA : somme des REMB = montant du virement annoncé
 - ✅ BSA : nombre de lignes lues = nombre déclaré dans le « Total général »
 - ✅ MCI : somme des « Montant réglé » = « Total prestataire »

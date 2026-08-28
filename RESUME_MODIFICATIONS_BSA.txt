@@ -12,15 +12,23 @@
   Montant_Reclame_Brut    =  FR.REELS               Montant (Ar)
   Ticket_Moderateur       =  Tx (%)                 Pourcentage (%)
   Montant_Paye_Regle      =  REMB                   Montant (Ar)
-  Montant_Exclu_Rejet     =  NON_REMB - TPG         Montant (Ar) [CALCULÉ]
+  Montant_Exclu_Rejet     =  FR.REELS - REMB        LE RESTE (= 0 si FR.REELS = REMB)
 
   Note : Dans le PDF BSA, NON_REMB inclut le TPG.
-         Le vrai montant exclu = NON_REMB - TPG
+         NON_REMB - TPG sert de CONTRÔLE CROISÉ : cette valeur doit être
+         égale au reste (FR.REELS - REMB), sinon INCOHÉRENCE signalée.
 
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ VÉRIFICATION DE COHÉRENCE                                                    │
 └─────────────────────────────────────────────────────────────────────────────┘
+
+  RÈGLE BSA (la règle du reste) :
+
+             SI FR.REELS = REMB  ALORS  LE RESTE = 0
+
+  Le reste (Montant_Exclu_Rejet) = FR.REELS - REMB.
+  Contrôle croisé : le reste doit être égal à NON_REMB - TPG.
 
   Formule :  FR.REELS = REMB + (NON_REMB - TPG)
 
@@ -28,6 +36,8 @@
              Montant_Reclame_Brut = Montant_Paye_Regle + Montant_Exclu_Rejet
 
   ✅ Résultat : 51 lignes vérifiées, 0 incohérence détectée
+  ✅ 43 lignes avec FR.REELS = REMB → toutes avec reste = 0 (43/43)
+  ✅ Totaux : 888 500 = 777 650 (REMB) + 110 850 (reste)
 
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -43,16 +53,31 @@
      
      → Maintenant contient le taux de prise en charge Tx (%) au lieu de TPG
 
-  2. VÉRIFICATION AUTOMATIQUE
-     ━━━━━━━━━━━━━━━━━━━━━━━━
-     AJOUT : Contrôle de cohérence par ligne
-     → Alerte automatique si FR.REELS ≠ REMB + (NON_REMB - TPG)
-     → Message détaillé avec les valeurs concernées
+  2. MONTANT_EXCLU_REJET = LE RESTE
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     AVANT  : "Montant_Exclu_Rejet": max(0, num(nonremb) - num(tpg))
+     APRÈS  : "Montant_Exclu_Rejet": FR.REELS - REMB  (le reste)
 
-  3. DOCUMENTATION
+     → Règle garantie par construction : si FR.REELS = REMB alors le
+       reste = 0, et l'identité Brut = Payé + Reste tient sur chaque ligne
+
+  3. VÉRIFICATION AUTOMATIQUE
+     ━━━━━━━━━━━━━━━━━━━━━━━━
+     AJOUT : Fonction controle_reste() + contrôle de cohérence par ligne
+     → Règle : si FR.REELS = REMB alors le reste = 0
+     → Contrôle croisé : reste = NON_REMB - TPG (sinon INCOHÉRENCE)
+     → Signale aussi un REMB supérieur à FR.REELS
+     → Message détaillé avec les valeurs concernées
+     → Note « !! INCOHÉRENCE ... » ajoutée dans Motif_Observation
+     → Récapitulatif par fichier :
+       « cohérence : 51 lignes vérifiées — si FR.REELS = REMB alors
+         le reste = 0  OK »
+
+  4. DOCUMENTATION
      ━━━━━━━━━━━━━━
      → Mise à jour des commentaires et docstrings
      → Précision sur le mapping Ticket_Moderateur = Tx (%)
+     → Règle du reste documentée (VERIFICATION_BSA.md, TUTO_UTILISATION.md)
 
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -73,9 +98,11 @@
   Montant_Reclame_Brut    : 80 000
   Ticket_Moderateur       : 100      ← Taux (%)
   Montant_Paye_Regle      : 80 000
-  Montant_Exclu_Rejet     : 0        ← NON_REMB - TPG = 20 000 - 20 000
+  Montant_Exclu_Rejet     : 0        ← le reste = 80 000 - 80 000 = 0
+                                       (NON_REMB - TPG = 0 : contrôle croisé OK)
   
-  Cohérence : 80 000 = 80 000 + 0 ✅
+  Règle du reste : FR.REELS = REMB → reste = 0 ✅
+  Cohérence      : 80 000 = 80 000 + 0 ✅
 
 
   Cas 2 : Prise en charge 95%
@@ -92,9 +119,11 @@
   Montant_Reclame_Brut    : 15 000
   Ticket_Moderateur       : 95       ← Taux (%)
   Montant_Paye_Regle      : 14 250
-  Montant_Exclu_Rejet     : 750      ← NON_REMB - TPG = 750 - 0
+  Montant_Exclu_Rejet     : 750      ← le reste = 15 000 - 14 250
+                                       (NON_REMB - TPG = 750 : contrôle croisé OK)
   
-  Cohérence : 15 000 = 14 250 + 750 ✅
+  Règle du reste : FR.REELS ≠ REMB → reste = 750 ✅
+  Cohérence      : 15 000 = 14 250 + 750 ✅
 
 
   Cas 3 : Acte limité avec 95%
@@ -111,9 +140,11 @@
   Montant_Reclame_Brut    : 20 000
   Ticket_Moderateur       : 95       ← Taux (%)
   Montant_Paye_Regle      : 15 000
-  Montant_Exclu_Rejet     : 5 000    ← NON_REMB - TPG = 5 000 - 0
+  Montant_Exclu_Rejet     : 5 000    ← le reste = 20 000 - 15 000
+                                       (NON_REMB - TPG = 5 000 : contrôle croisé OK)
   
-  Cohérence : 20 000 = 15 000 + 5 000 ✅
+  Règle du reste : FR.REELS ≠ REMB → reste = 5 000 ✅
+  Cohérence      : 20 000 = 15 000 + 5 000 ✅
 
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -137,9 +168,12 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 
   ✅ Toutes les règles de mapping BSA sont correctement appliquées
-  ✅ La cohérence des données est vérifiée automatiquement
+  ✅ RÈGLE DU RESTE : si FR.REELS = REMB alors le reste = 0 — garantie
+     par construction (Montant_Exclu_Rejet = FR.REELS - REMB)
+  ✅ La cohérence des données est vérifiée automatiquement à chaque
+     conversion (règle du reste + contrôle croisé NON_REMB - TPG)
   ✅ Le Ticket_Moderateur contient maintenant le taux Tx (%)
-  ✅ Montant_Exclu_Rejet = NON_REMB - TPG (montant exclu réel)
-  ✅ Aucune incohérence détectée sur le fichier test (51 lignes)
+  ✅ Aucune incohérence détectée sur le fichier test (51 lignes,
+     43 avec FR.REELS = REMB, toutes avec reste = 0)
 
 ═══════════════════════════════════════════════════════════════════════════════

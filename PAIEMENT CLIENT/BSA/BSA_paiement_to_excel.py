@@ -15,9 +15,13 @@ Format traité (propre à BSA) : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
        15 000,00 0,00 95,00 14 250,00 750,00 0,00"
       (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx (%) |
        REMB | NON REMB | TPG*)
-      Note : dans le PDF BSA, NON_REMB inclut le TPG (ticket modérateur).
-      Le vrai montant exclu/rejet = NON_REMB - TPG.
-      La cohérence est : FR.REELS = REMB + (NON_REMB - TPG).
+      Règle de cohérence BSA : le reste (non remboursé) = FR.REELS - REMB.
+      Si FR.REELS = REMB (tout est remboursé) alors le reste = 0.
+      Dans le PDF, NON_REMB inclut le TPG (ticket modérateur) :
+      NON_REMB - TPG doit être égal au reste. Chaque ligne est contrôlée ;
+      tout écart d'au moins 1 Ar est signalé (INCOHÉRENCE) et noté dans
+      la colonne Motif_Observation.
+      Montant_Exclu_Rejet = le reste (= 0 si FR.REELS = REMB).
       Ticket_Moderateur = Tx (%) (taux de prise en charge).
   - page finale : facture SALFA (n° FA-...) et "Total général".
 
@@ -269,6 +273,34 @@ def full_pdf_text(pdf):
     return "\n".join((page.extract_text() or "") for page in pdf.pages)
 
 
+def controle_reste(fr, remb, nonremb, tpg):
+    """Contrôle de cohérence des montants d'une ligne BSA.
+
+    Règle BSA : le reste (montant non remboursé, écrit dans
+    Montant_Exclu_Rejet) = FR.REELS - REMB.
+    Si FR.REELS = REMB (tout est remboursé) alors le reste = 0.
+
+    Contrôle croisé avec les colonnes du PDF : dans le PDF BSA,
+    NON_REMB inclut le TPG (ticket modérateur), donc NON_REMB - TPG
+    doit être égal au reste. Tout écart d'au moins 1 Ar (ou un REMB
+    supérieur à FR.REELS) est une incohérence.
+
+    Retourne (reste, problemes) :
+      - reste     : le reste à écrire dans Montant_Exclu_Rejet (>= 0) ;
+      - problemes : liste de messages d'explication (vide si cohérent).
+    """
+    reste = fr - remb
+    exclu_pdf = nonremb - tpg
+    problemes = []
+    if remb > fr + 0.5:
+        problemes.append(f"REMB ({fmt_amount(remb)}) > FR.REELS ({fmt_amount(fr)})")
+    if abs(reste - exclu_pdf) >= 1:
+        problemes.append(
+            f"le reste FR.REELS-REMB ({fmt_amount(reste)}) ≠ "
+            f"NON_REMB-TPG ({fmt_amount(exclu_pdf)})")
+    return max(0.0, reste), problemes
+
+
 # --------------------------------------------------------------------------
 # Format BSA : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
 # --------------------------------------------------------------------------
@@ -281,10 +313,12 @@ def parse_bsa(pdf, nom_pdf):
                  15 000,00 0,00 95,00 14 250,00 750,00 0,00"
                  (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx |
                   REMB | NON REMB | TPG*)
-      Note : Montant_Exclu_Rejet = NON_REMB - TPG (le NON_REMB du PDF
-      inclut le ticket modérateur ; les vraies exclusions = NON_REMB - TPG).
+      Règle de cohérence : le reste = FR.REELS - REMB ; si FR.REELS = REMB
+      alors le reste = 0. Le reste est contrôlé contre NON_REMB - TPG
+      (le NON_REMB du PDF inclut le ticket modérateur) : tout écart
+      d'au moins 1 Ar est signalé comme INCOHÉRENCE.
+      Montant_Exclu_Rejet = le reste (= 0 si FR.REELS = REMB).
       Ticket_Moderateur = Tx (%) (taux de prise en charge BSA).
-      Cohérence vérifiée : FR.REELS = REMB + (NON_REMB - TPG).
       lignes 3+ : suite du nom (colonne de gauche, x<125) puis libellé de
                  l'acte / médicament (x>=125), tant que la ligne n'est pas un
                  en-tête de page, un total ou le pied de page.
@@ -386,6 +420,7 @@ def parse_bsa(pdf, nom_pdf):
 
     # --- Construction des lignes Excel ---
     lignes = []
+    nb_incoherences = 0     # lignes dont les montants ne respectent pas la règle
     for b in blocks:
         if b["data"] is None:
             print(f"!! {nom_pdf} : bloc {b['num']} sans ligne de données -> ignoré")
@@ -406,19 +441,25 @@ def parse_bsa(pdf, nom_pdf):
         if amount_to_float(mut) > 0:
             motif += f" ; 1ère mutuelle : {fmt_amount(amount_to_float(mut))} Ar"
 
-        # Cohérence : FR.REELS = REMB + (NON_REMB - TPG)
+        # --- Cohérence des montants (règle BSA) -------------------------
+        # Le reste (non remboursé) = FR.REELS - REMB.
+        # Si FR.REELS = REMB alors le reste = 0.
+        # Contrôle croisé : NON_REMB - TPG doit donner le même reste.
         fr_v = amount_to_float(fr)
         remb_v = amount_to_float(remb)
         nonremb_v = amount_to_float(nonremb)
         tpg_v = amount_to_float(tpg)
-        exclu_v = max(0, nonremb_v - tpg_v)
-        attendu = remb_v + exclu_v
-        if abs(fr_v - attendu) >= 1:
-            print(f"   !! INCOHÉRENCE {nom_pdf} : bloc {b['num']} "
-                  f"{date} {nom} : FR.REELS={fmt_amount(fr_v)} ≠ "
-                  f"REMB({fmt_amount(remb_v)}) + "
-                  f"NON_REMB-TPG({fmt_amount(exclu_v)}) = "
-                  f"{fmt_amount(attendu)}")
+        exclu_v, problemes = controle_reste(fr_v, remb_v, nonremb_v, tpg_v)
+        if problemes:
+            nb_incoherences += 1
+            for p in problemes:
+                print(f"   !! INCOHÉRENCE {nom_pdf} : bloc {b['num']} "
+                      f"{date} {nom} : {p} "
+                      f"(FR.REELS={fmt_amount(fr_v)}, "
+                      f"REMB={fmt_amount(remb_v)}, "
+                      f"NON_REMB={fmt_amount(nonremb_v)}, "
+                      f"TPG={fmt_amount(tpg_v)})")
+            motif += " !! INCOHÉRENCE : " + " ; ".join(problemes)
 
         # Facture SALFA de CE décompte (format 2025), sinon celle du relevé.
         decompte = b["num"].split("-")[0]
@@ -437,9 +478,11 @@ def parse_bsa(pdf, nom_pdf):
             "Montant_Reclame_Brut": num(fr),
             "Ticket_Moderateur": num(tx),
             "Montant_Paye_Regle": num(remb),
-            "Montant_Exclu_Rejet": max(0, num(nonremb) - num(tpg)),
+            "Montant_Exclu_Rejet": int(exclu_v) if exclu_v == int(exclu_v)
+                                    else exclu_v,   # le reste (= 0 si FR.REELS = REMB)
             "Motif_Observation": motif,
         })
+    meta["nb_incoherences"] = nb_incoherences
     return meta, lignes
 
 
@@ -611,6 +654,18 @@ def main():
         if meta["nb_declare"] is not None and meta["nb_declare"] != len(lignes):
             print(f"   !! ATTENTION : {len(lignes)} lignes lues, "
                   f"{meta['nb_declare']} déclarées dans le total général du relevé")
+
+        # --- Contrôle de cohérence des montants -------------------------
+        # Règle BSA : le reste = FR.REELS - REMB ; si FR.REELS = REMB
+        # alors le reste doit être 0 (contrôlé aussi contre NON_REMB - TPG).
+        nb_incoh = meta.get("nb_incoherences", 0)
+        if nb_incoh:
+            print(f"   !! ATTENTION : {nb_incoh} ligne(s) incohérente(s) — "
+                  f"règle : si FR.REELS = REMB alors le reste = 0 "
+                  f"(détail ci-dessus, et noté dans Motif_Observation)")
+        else:
+            print(f"   cohérence : {len(lignes)} lignes vérifiées — "
+                  f"si FR.REELS = REMB alors le reste = 0  OK")
 
         out = os.path.join(dossier_annee(date_reglement),
                            nom_sortie(SOCIETE, date_reglement, lignes, total_paye))
