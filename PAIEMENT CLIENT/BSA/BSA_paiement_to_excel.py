@@ -18,6 +18,7 @@ Format traité (propre à BSA) : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
       Note : dans le PDF BSA, NON_REMB inclut le TPG (ticket modérateur).
       Le vrai montant exclu/rejet = NON_REMB - TPG.
       La cohérence est : FR.REELS = REMB + (NON_REMB - TPG).
+      Ticket_Moderateur = Tx (%) (taux de prise en charge).
   - page finale : facture SALFA (n° FA-...) et "Total général".
 
 Utilisation (double-clic sur BSA_paiement.bat, ou invite de commandes) :
@@ -282,6 +283,8 @@ def parse_bsa(pdf, nom_pdf):
                   REMB | NON REMB | TPG*)
       Note : Montant_Exclu_Rejet = NON_REMB - TPG (le NON_REMB du PDF
       inclut le ticket modérateur ; les vraies exclusions = NON_REMB - TPG).
+      Ticket_Moderateur = Tx (%) (taux de prise en charge BSA).
+      Cohérence vérifiée : FR.REELS = REMB + (NON_REMB - TPG).
       lignes 3+ : suite du nom (colonne de gauche, x<125) puis libellé de
                  l'acte / médicament (x>=125), tant que la ligne n'est pas un
                  en-tête de page, un total ou le pied de page.
@@ -403,6 +406,20 @@ def parse_bsa(pdf, nom_pdf):
         if amount_to_float(mut) > 0:
             motif += f" ; 1ère mutuelle : {fmt_amount(amount_to_float(mut))} Ar"
 
+        # Cohérence : FR.REELS = REMB + (NON_REMB - TPG)
+        fr_v = amount_to_float(fr)
+        remb_v = amount_to_float(remb)
+        nonremb_v = amount_to_float(nonremb)
+        tpg_v = amount_to_float(tpg)
+        exclu_v = max(0, nonremb_v - tpg_v)
+        attendu = remb_v + exclu_v
+        if abs(fr_v - attendu) >= 1:
+            print(f"   !! INCOHÉRENCE {nom_pdf} : bloc {b['num']} "
+                  f"{date} {nom} : FR.REELS={fmt_amount(fr_v)} ≠ "
+                  f"REMB({fmt_amount(remb_v)}) + "
+                  f"NON_REMB-TPG({fmt_amount(exclu_v)}) = "
+                  f"{fmt_amount(attendu)}")
+
         # Facture SALFA de CE décompte (format 2025), sinon celle du relevé.
         decompte = b["num"].split("-")[0]
         facture = (meta["factures_decompte"].get(decompte)
@@ -418,7 +435,7 @@ def parse_bsa(pdf, nom_pdf):
             "Code_Acte": b["acte"],
             "Libelle_Acte": " ".join(b["libelle"]),
             "Montant_Reclame_Brut": num(fr),
-            "Ticket_Moderateur": num(tpg),
+            "Ticket_Moderateur": num(tx),
             "Montant_Paye_Regle": num(remb),
             "Montant_Exclu_Rejet": max(0, num(nonremb) - num(tpg)),
             "Motif_Observation": motif,
