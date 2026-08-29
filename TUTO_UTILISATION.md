@@ -210,24 +210,27 @@ PAIEMENT CLIENT/
 │   ├── PDF/                               ← les PDF BSA à convertir (dépôt ici)
 │   │   └── 17-04-2026 BFV-SG 1129370 ....pdf
 │   ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
-│   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
-│       └── 17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx ← l'Excel produit
+│   └── 2026/                              ← année du RÈGLEMENT (créé auto)
+│       └── 2026/                          ← année des SOINS payés (créé auto)
+│           └── 17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx ← l'Excel produit
 ├── MCI CARE/                              ← société MCI CARE (décomptes de règlement)
 │   ├── MCI_CARE_paiement_to_excel.py      ← script du format MCI CARE
 │   ├── MCI_CARE_paiement.bat              ← double-clic = conversion MCI CARE
 │   ├── PDF/                               ← les PDF MCI CARE à convertir (dépôt ici)
 │   │   └── DISPENSAIRE LOTERANA ....pdf
 │   ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
-│   └── 2026/                              ← dossier de l'ANNÉE du règlement (créé auto)
-│       └── 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
+│   └── 2026/                              ← année du RÈGLEMENT (créé auto)
+│       └── 2026/                          ← année des SOINS payés (créé auto)
+│           └── 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx ← l'Excel produit
 └── ASCOMA/                                ← société ASCOMA (décomptes tiers payant)
     ├── ASCOMA_to_excel.py                 ← script du format ASCOMA
     ├── ASCOMA_paiement.bat                ← double-clic = conversion ASCOMA
     ├── PDF/                               ← les PDF ASCOMA à convertir (dépôt ici)
     │   └── 7 035 543 23-01-25.pdf
     ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
-    └── 2025/                              ← dossier de l'ANNÉE du règlement (créé auto)
-        └── 09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx ← l'Excel produit
+    └── 2025/                              ← année du RÈGLEMENT (créé auto)
+        └── 2024/                          ← année des SOINS payés (créé auto)
+            └── 09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx ← l'Excel produit
 ```
 
 **Règle : c'est le DOSSIER qui décide, pas le contenu du PDF.**
@@ -240,9 +243,11 @@ PAIEMENT CLIENT/
 
 Chaque société a son script et son .bat. On dépose le PDF dans le sous-dossier
 **`PDF/` de sa société**, puis on double-clique sur le .bat (ou `CONVERTIR.bat` choix 2).
-Chaque Excel créé est rangé dans un sous-dossier **au nom de l'année du
-règlement** (`BSA/2026/…`, `MCI CARE/2025/…`, `ASCOMA/2025/…`), créé
-automatiquement si besoin.
+Chaque Excel créé est rangé dans **deux sous-dossiers** créés automatiquement :
+d'abord l'**année du règlement** (quand le paiement a été fait), puis l'**année
+des soins payés** (`BSA/2026/2026/…`, `ASCOMA/2025/2024/…`). Car un paiement
+fait cette année peut régler des soins de l'année dernière : ce second
+sous-dossier permet de les distinguer.
 Les PDF déposés directement dans le dossier de la société (ancienne habitude)
 sont quand même trouvés et convertis.
 Le nom du PDF lui-même n'a aucune importance.
@@ -297,19 +302,22 @@ python ASCOMA_to_excel.py "mon_decompte.pdf"       un seul PDF
 ### Nom du fichier Excel créé : DATE DE PAIEMENT + SOCIÉTÉ + ANNÉE + PÉRIODE + MONTANT
 
 ```
-exemple : BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
-                 └── date paiement ──┘ └┬┘ └┬┘ └────────┬─────────┘ └──────┬──────┘
-   dossier de l'année                    société année    intervalle des         montant
-                                                           dates de soins         payé
+exemple : BSA/2026/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+                 │    └─── année des soins ───┘
+                 └── année du règlement
+                                   └── date paiement ──┘ └┬┘ └┬┘ └────────┬─────────┘ └──────┬──────┘
+                                                            société année    intervalle des         montant
+                                                                              dates de soins         payé
 
-exemple : MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+exemple : MCI CARE/2026/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
-exemple : ASCOMA/2025/09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
+exemple : ASCOMA/2025/2024/09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
 ```
 
 | Pièce | Où le script la lit |
 |---|---|
-| **Dossier année** | année du règlement : les Excel sont rangés dans `SOCIETE/<ANNÉE>/` (`BSA/2026/…`) |
+| **Dossier année du règlement** | année du règlement : les Excel sont rangés dans `SOCIETE/<ANNÉE_REGLEMENT>/…` (`BSA/2026/…`) |
+| **Dossier année des soins** | année de la période de soins payée (1re date de soins des lignes) : les Excel sont rangés dans `SOCIETE/<ANNÉE_REGLEMENT>/<ANNÉE_SOINS>/…` (`ASCOMA/2025/2024/…`). Un paiement fait cette année peut régler des soins de l'année dernière |
 | **Société** | fixée dans le script du dossier (`BSA` / `MCI CARE` / `ASCOMA`) |
 | **Date de paiement** | BSA : date du virement (`A , le 17/04/2026`) · MCI : `Date comptable` · ASCOMA : `Règlement du JJ/MM/AAAA` (sinon `Edité le`) ; écrite au début du nom au format `JJ-MM-AA` |
 | **Intervalle des dates** | 1re et dernière date de soins des lignes (colonne `Date_Soins`), au format `JJ-MM-AA`. Une seule date si toutes les lignes tombent le même jour (`17-04-26 BSA 2026 17-04-26 MONTANT 20 000Ar.xlsx`) |
@@ -319,8 +327,10 @@ Le mois n'est plus écrit dans le nom du fichier : il est remplacé par la date
 de paiement au début du nom. Les dates de l'intervalle gardent l'année sur
 2 chiffres (`25` = 2025), même quand elles ne sont pas de la même année que
 le paiement :
-`MCI CARE/2026/03-01-26 MCI CARE 2026 03-11-25 à 16-11-25 MONTANT 206 000Ar.xlsx`
-(le dossier suit l'année du **règlement**, ici 2026, pas celle des soins).
+`MCI CARE/2026/2025/03-01-26 MCI CARE 2026 03-11-25 à 16-11-25 MONTANT 206 000Ar.xlsx`
+(le 1er sous-dossier suit l'année du **règlement** — ici 2026 — et le
+2e sous-dossier l'année des **soins** — ici 2025, car les soins ont été faits
+fin 2025 et payés début 2026).
 
 ### Colonnes produites (13)
 

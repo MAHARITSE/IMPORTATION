@@ -55,5 +55,26 @@ class BsaRulesTest(unittest.TestCase):
             self.assertEqual(result["Montant_Exclu_Rejet"], 2_000)
 
 
+class AnneeSoinsTest(unittest.TestCase):
+    def test_annee_soins_est_lannee_de_la_premiere_date_de_soins(self):
+        # Un paiement de 2026 peut régler des soins faits fin 2025 : le
+        # sous-dossier d'année des soins doit être 2025 (1re date de soins).
+        lignes = [{"Date_Soins": "2025-12-20"}, {"Date_Soins": "2026-01-10"}]
+        for script in SCRIPTS:
+            with self.subTest(script=script.name):
+                self.assertEqual(load(script).annee_soins(lignes, "2026-01-15"), "2025")
+
+    def test_annee_soins_repli_sur_lannee_du_reglement(self):
+        lignes = [{"Date_Soins": ""}, {"Date_Soins": "pas une date"}]
+        for script in SCRIPTS:
+            with self.subTest(script=script.name):
+                self.assertEqual(load(script).annee_soins(lignes, "2026-01-15"), "2026")
+
+    def test_annee_soins_sans_aucune_date(self):
+        for script in SCRIPTS:
+            with self.subTest(script=script.name):
+                self.assertEqual(load(script).annee_soins([], None), "SANS DATE")
+
+
 if __name__ == "__main__":
     unittest.main()
