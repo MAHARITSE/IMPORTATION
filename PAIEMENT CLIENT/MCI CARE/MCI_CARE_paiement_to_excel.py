@@ -22,12 +22,16 @@ Utilisation (double-clic sur MCI_CARE_paiement.bat, ou invite de commandes) :
     python MCI_CARE_paiement_to_excel.py --force            # régénérer (écrase l'Excel existant)
     python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf" # un seul PDF (nom ou chemin)
 
-Sortie : MCI CARE/<ANNEE>/<DATE_PAIEMENT> MCI CARE <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-    (sous-dossier <ANNEE> = année de la date comptable, créé automatiquement)
-    exemple : MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+Sortie : MCI CARE/<ANNEE_REGLEMENT>/<ANNEE_SOINS>/<DATE_PAIEMENT> MCI CARE <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+    Deux sous-dossiers, créés automatiquement :
+    - <ANNEE_REGLEMENT> = année de la date comptable (le paiement fait CETTE année)
+    - <ANNEE_SOINS>     = année de la période de soins payée (1re date de
+                          soins), car un paiement de cette année peut régler
+                          des soins de l'année dernière
+    exemple : MCI CARE/2026/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
     - DATE_PAIEMENT : date comptable du décompte, au format JJ-MM-AA
     - SOCIETE       : MCI CARE (fixée dans ce script)
-    - ANNEE         : année de la date comptable (sert aussi de nom au sous-dossier)
+    - ANNEE         : année de la date comptable (celle du 1er sous-dossier)
     - PERIODE       : 1re et dernière date de soins du décompte, au format JJ-MM-AA
                       (une seule date si toutes les lignes sont du même jour)
     - MONTANT       : total payé (Total prestataire), précédé du mot "MONTANT"
@@ -55,8 +59,10 @@ from openpyxl import Workbook, load_workbook
 # Les PDF à convertir sont déposés dans le sous-dossier "PDF" de ce dossier
 # (MCI CARE/PDF/) ; à défaut, ils sont cherchés directement dans MCI CARE.
 # Le modèle Excel est dans le dossier parent "PAIEMENT CLIENT".
-# Les Excel produits sont classés dans un sous-dossier au nom de l'année
-# de la date comptable (ex : MCI CARE/2026/...), créé automatiquement.
+# Les Excel produits sont classés dans un sous-dossier au nom de l'année de
+# la date comptable, puis dans un sous-dossier au nom de l'année des soins
+# payés (un paiement de cette année peut régler des soins de l'année
+# dernière) : ex : MCI CARE/2026/2026/..., créés automatiquement.
 PDF_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_SUBDIR = os.path.join(PDF_DIR, "PDF")
 MODEL = os.path.join(os.path.dirname(PDF_DIR),
@@ -134,8 +140,9 @@ def parse_date(d):
 # Nom du fichier Excel de sortie
 #   <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
 #   exemple : 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
-# Classé dans un sous-dossier au nom de l'année du règlement :
-#   MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+# Classé dans deux sous-dossiers : année du règlement PUIS année des soins
+# (un paiement de cette année peut régler des soins de l'année dernière) :
+#   MCI CARE/2026/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 # --------------------------------------------------------------------------
 # Caractères interdits dans un nom de fichier Windows
 INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -167,6 +174,25 @@ def periode_soins(lignes, defaut=None):
         else f"{date_courte(debut)} à {date_courte(fin)}"
 
 
+def annee_soins(lignes, defaut=None):
+    """Année de la période de soins payée par le décompte : '2024', '2025'…
+
+    C'est l'année de la 1re date de soins (colonne Date_Soins) des lignes :
+    un paiement fait cette année peut régler des soins de l'année dernière,
+    le sous-dossier permet de les distinguer.
+    À défaut de date de soins lisible, on reprend l'année de la date comptable
+    (ou 'SANS DATE' s'il n'y a pas non plus de date comptable).
+    """
+    dates = sorted(l.get("Date_Soins") or "" for l in lignes)
+    dates = [d for d in dates if DATE_ISO.match(d)]
+    if not dates:
+        if defaut and DATE_ISO.match(defaut):
+            dates = [defaut]
+        else:
+            return "SANS DATE"
+    return dates[0].split("-")[0]
+
+
 def nom_sortie(societe, date_reglement, lignes, montant):
     """Construit le nom du fichier Excel :
 
@@ -183,16 +209,21 @@ def nom_sortie(societe, date_reglement, lignes, montant):
     return nom + ".xlsx"
 
 
-def dossier_annee(date_reglement):
-    """Chemin complet du dossier de l'année du règlement (créé si absent).
+def dossier_annee(date_reglement, lignes=None):
+    """Chemin complet <ANNEE_REGLEMENT>/<ANNEE_SOINS> (créés si absents).
 
-    Les Excel sont classés par année de la date comptable :
-        MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+    Les Excel sont classés par année de la date comptable PUIS par année de la
+    période de soins payée (un paiement de cette année peut régler des soins
+    de l'année dernière) :
+        MCI CARE/2026/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ'.
+    lignes : lignes de soins (pour déterminer l'année de soins) ; si absent,
+             l'année de soins reprend l'année du règlement.
     """
     annee = date_reglement.split("-")[0]
-    d = os.path.join(PDF_DIR, annee)
+    soins = annee_soins(lignes, date_reglement) if lignes is not None else annee
+    d = os.path.join(PDF_DIR, annee, soins)
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -414,7 +445,7 @@ def main():
             continue
 
         # --- Nom du fichier : DATE_PAIEMENT MCI CARE ANNEE PERIODE MONTANT <montant>Ar,
-        #     classé dans le sous-dossier de l'année du règlement ---
+        #     classé dans <ANNEE du règlement>/<ANNEE des soins> ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
             print(f"!! {nom_pdf} : date comptable introuvable dans le PDF")
@@ -432,7 +463,7 @@ def main():
                 print(f"   !! ATTENTION : {fmt_amount(somme)} Ar en lignes "
                       f"≠ total prestataire ({fmt_amount(meta['total_prestataire'])} Ar)")
 
-        out = os.path.join(dossier_annee(date_reglement),
+        out = os.path.join(dossier_annee(date_reglement, lignes),
                            nom_sortie(SOCIETE, date_reglement, lignes, total_paye))
         relatif = os.path.relpath(out, PDF_DIR)
         if os.path.exists(out) and not force:

@@ -7,8 +7,12 @@ Il utilise les fonctions de pdf_paiement_to_excel.py (dossier parent).
 
 Le PDF ASCOMA est un « Décompte de Règlement Tiers Payant » :
   - les PDF à convertir sont déposés dans le sous-dossier  ASCOMA/PDF/
-  - l'Excel produit est rangé dans  PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/
+  - l'Excel produit est rangé dans
+    PAIEMENT CLIENT/<SOCIETE>/<ANNEE_REGLEMENT>/<ANNEE_SOINS>/
     nom : <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+    <ANNEE_REGLEMENT> = année du règlement, <ANNEE_SOINS> = année de la
+    période de soins payée (1re date de soins) : un paiement de cette année
+    peut régler des soins de l'année dernière.
 
 Utilisation :
   python ASCOMA_to_excel.py                  tous les PDF du sous-dossier PDF/
@@ -41,6 +45,7 @@ from pdf_paiement_to_excel import (
     HEADERS,
     MONTANT_RE,
     nom_sortie,
+    annee_soins,
 )
 
 # Chemins spécifiques à ASCOMA
@@ -287,8 +292,10 @@ def main():
                 print(f"   !! ATTENTION : net récapitulatif {fmt_amount(meta['total_net'])} Ar "
                       f"> somme des lignes {fmt_amount(total_lignes)} Ar")
 
-        # Chemin de sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/
-        out_dir = os.path.join(base_dir, societe, annee)
+        # Chemin de sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE_REGLEMENT>/<ANNEE_SOINS>/
+        # (un paiement de cette année peut régler des soins de l'année dernière)
+        soins = annee_soins(lignes, date_reglement)
+        out_dir = os.path.join(base_dir, societe, annee, soins)
         os.makedirs(out_dir, exist_ok=True)
         out_name = nom_sortie(societe, date_reglement, lignes, total_paye)
         out_path = os.path.join(out_dir, out_name)

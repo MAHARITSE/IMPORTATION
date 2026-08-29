@@ -17,15 +17,19 @@ Règle : c'est le DOSSIER qui décide le traitement, pas le contenu du PDF.
   - PDF dans ASCOMA/    → parseur ASCOMA
 Le nom du PDF lui-même n'a AUCUNE importance.
 
-Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE>/<DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-    (sous-dossier <ANNEE> = année du règlement, créé automatiquement)
+Sortie : PAIEMENT CLIENT/<SOCIETE>/<ANNEE_REGLEMENT>/<ANNEE_SOINS>/<DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
+    Deux sous-dossiers, créés automatiquement :
+    - <ANNEE_REGLEMENT> = année du règlement (le paiement fait CETTE année)
+    - <ANNEE_SOINS>     = année de la période de soins payée (1re date de
+                          soins), car un paiement de cette année peut régler
+                          des soins de l'année dernière
     - DATE_PAIEMENT : date du règlement, au format JJ-MM-AA
     - SOCIETE       : nom du sous-dossier (ex : "MCI CARE")
-    - ANNEE         : année du règlement (sert aussi de nom au sous-dossier)
+    - ANNEE         : année du règlement (celle du 1er sous-dossier)
     - PERIODE       : 1re et dernière date de soins payées, au format JJ-MM-AA
     - MONTANT       : total payé par l'assureur, précédé du mot "MONTANT" et suivi de "Ar"
-    exemples : PAIEMENT CLIENT/BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
-               PAIEMENT CLIENT/MCI CARE/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
+    exemples : PAIEMENT CLIENT/BSA/2026/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+               PAIEMENT CLIENT/ASCOMA/2025/2024/09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
 
 MCI CARE — Ref_Decompte : le n° de facture du décompte, BRUT, comme les autres
     sociétés (pas de suffixe « /<n>L » avec le nombre de lignes) :
@@ -52,8 +56,11 @@ from openpyxl import Workbook, load_workbook
 
 # Le script, le modèle et les PDF se trouvent dans PAIEMENT CLIENT.
 # Les fichiers Excel sont classés dans un sous-dossier portant le nom de la
-# société, puis dans un sous-dossier au nom de l'année du règlement
-# (ex : PAIEMENT CLIENT/BSA/2026/...), créés automatiquement.
+# société, puis dans un sous-dossier au nom de l'année du règlement, puis dans
+# un sous-dossier au nom de l'année des soins payés (un paiement de cette
+# année peut régler des soins de l'année dernière) :
+#   PAIEMENT CLIENT/BSA/2026/2026/...
+#   PAIEMENT CLIENT/ASCOMA/2025/2024/...   (créés automatiquement)
 PDF_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL = os.path.join(PDF_DIR, "Modele_Import_Reglements_Decompte_Assurance.xlsx")
 SHEET = "Modele_Reglements"
@@ -198,8 +205,10 @@ def parse_date(d):
 #   <DATE_PAIEMENT> <SOCIETE> <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
 #   exemple : 17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
 #           : 02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
-# Classé dans un sous-dossier au nom de l'année du règlement :
-#   BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+# Classé dans deux sous-dossiers : année du règlement PUIS année des soins
+# (un paiement de cette année peut régler des soins de l'année dernière) :
+#   BSA/2026/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+#   ASCOMA/2025/2024/09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
 # --------------------------------------------------------------------------
 # Caractères interdits dans un nom de fichier Windows
 INVALIDES = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -231,6 +240,25 @@ def periode_soins(lignes, defaut=None):
         else f"{date_courte(debut)} à {date_courte(fin)}"
 
 
+def annee_soins(lignes, defaut=None):
+    """Année de la période de soins payée par le règlement : '2024', '2025'…
+
+    C'est l'année de la 1re date de soins (colonne Date_Soins) des lignes :
+    un paiement fait cette année peut régler des soins de l'année dernière,
+    le sous-dossier permet de les distinguer.
+    À défaut de date de soins lisible, on reprend l'année du règlement
+    (ou 'SANS DATE' s'il n'y a pas non plus de date de règlement).
+    """
+    dates = sorted(l.get("Date_Soins") or "" for l in lignes)
+    dates = [d for d in dates if DATE_ISO.match(d)]
+    if not dates:
+        if defaut and DATE_ISO.match(defaut):
+            dates = [defaut]
+        else:
+            return "SANS DATE"
+    return dates[0].split("-")[0]
+
+
 def nom_sortie(societe, date_reglement, lignes, montant):
     """Construit le nom du fichier Excel :
 
@@ -247,16 +275,22 @@ def nom_sortie(societe, date_reglement, lignes, montant):
     return nom + ".xlsx"
 
 
-def dossier_annee(societe, date_reglement):
-    """Chemin complet du dossier <SOCIETE>/<ANNEE> (créé si absent).
+def dossier_annee(societe, date_reglement, lignes=None):
+    """Chemin complet <SOCIETE>/<ANNEE_REGLEMENT>/<ANNEE_SOINS> (créés si absents).
 
-    Les Excel sont classés par société puis par année du règlement :
-        BSA/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+    Les Excel sont classés par société, puis par année du règlement, puis par
+    année de la période de soins payée (un paiement fait cette année peut
+    régler des soins de l'année dernière) :
+        BSA/2026/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar.xlsx
+        ASCOMA/2025/2024/09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
 
     date_reglement : 'AAAA-MM-JJ'.
+    lignes : lignes de soins (pour déterminer l'année de soins) ; si absent,
+             l'année de soins reprend l'année du règlement.
     """
     annee = date_reglement.split("-")[0]
-    d = os.path.join(PDF_DIR, societe, annee)
+    soins = annee_soins(lignes, date_reglement) if lignes is not None else annee
+    d = os.path.join(PDF_DIR, societe, annee, soins)
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -710,7 +744,7 @@ def main():
             continue
 
         # --- Nom du fichier : DATE_PAIEMENT SOCIETE ANNEE PERIODE MONTANT <montant>Ar,
-        #     classé dans le sous-dossier <SOCIETE>/<ANNEE du règlement> ---
+        #     classé dans <SOCIETE>/<ANNEE du règlement>/<ANNEE des soins> ---
         dr = (meta.get("date_reglement") or "").strip()
         if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", dr):
             print(f"!! {nom_pdf} : date de règlement introuvable dans le PDF")
@@ -744,7 +778,7 @@ def main():
             if meta.get("total_net") is not None and meta["total_net"] <= total_paye + 1:
                 total_paye = meta["total_net"]
 
-        out = os.path.join(dossier_annee(societe, date_reglement),
+        out = os.path.join(dossier_annee(societe, date_reglement, lignes),
                            nom_sortie(societe, date_reglement, lignes, total_paye))
         relatif = os.path.relpath(out, PDF_DIR)
         if os.path.exists(out) and not force:
