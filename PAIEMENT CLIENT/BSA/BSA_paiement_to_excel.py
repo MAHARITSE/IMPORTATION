@@ -15,10 +15,8 @@ Format traité (propre à BSA) : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
        15 000,00 0,00 95,00 14 250,00 750,00 0,00"
       (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx (%) |
        REMB | NON REMB | TPG*)
-      Note : dans le PDF BSA, NON_REMB inclut le TPG (ticket modérateur).
-      Le vrai montant exclu/rejet = NON_REMB - TPG.
-      La cohérence est : FR.REELS = REMB + (NON_REMB - TPG).
-      Ticket_Moderateur = Tx (%) (taux de prise en charge).
+      Les quatre montants Excel sont déterminés par les règles métier BSA
+      selon Tx, FR.REELS, REMB, NON REMB et TPG*.
   - page finale : facture SALFA (n° FA-...) et "Total général".
 
 Utilisation (double-clic sur BSA_paiement.bat, ou invite de commandes) :
@@ -149,6 +147,46 @@ def num(s):
     v = amount_to_float(s)
     return int(v) if v == int(v) else v
 
+
+def calcul_montants_bsa(tx, fr_reels, remb, non_remb, tpg):
+    """Applique les règles métier BSA aux quatre montants exportés.
+
+    Les comparaisons tolèrent un centime d'écart provenant de l'extraction PDF.
+    La règle ``REMB = 0 et TPG = 0`` est prioritaire sur les autres règles.
+    En dehors des quatre cas définis, les montants BSA sont conservés tels quels
+    (TPG comme ticket modérateur et NON REMB comme montant exclu).
+    """
+    tx_v = amount_to_float(tx)
+    fr_v = amount_to_float(fr_reels)
+    remb_v = amount_to_float(remb)
+    nonremb_v = amount_to_float(non_remb)
+    tpg_v = amount_to_float(tpg)
+    egal = lambda a, b: abs(a - b) < 0.01
+
+    # Règle 4 (prioritaire, car elle peut aussi satisfaire la règle 3).
+    if egal(remb_v, 0) and egal(tpg_v, 0):
+        ticket, paye, exclu = 0, 0, fr_v
+    # Règle 1 : Tx = 0, FR.REELS = REMB et NON REMB = TPG.
+    elif egal(tx_v, 0) and egal(fr_v, remb_v) and egal(nonremb_v, tpg_v):
+        ticket, paye, exclu = 0, fr_v, 0
+    # Règle 2 : Tx > 0 et FR.REELS = REMB.
+    elif tx_v > 0 and egal(fr_v, remb_v):
+        ticket, paye, exclu = 0, fr_v, 0
+    # Règle 3 : Tx > 0, FR.REELS > REMB et TPG = 0.
+    elif tx_v > 0 and fr_v > remb_v and egal(tpg_v, 0):
+        ticket, paye, exclu = nonremb_v, remb_v, 0
+    else:
+        ticket, paye, exclu = tpg_v, remb_v, nonremb_v
+
+    def entier_si_possible(valeur):
+        return int(valeur) if valeur == int(valeur) else valeur
+
+    return {
+        "Montant_Reclame_Brut": entier_si_possible(fr_v),
+        "Ticket_Moderateur": entier_si_possible(ticket),
+        "Montant_Paye_Regle": entier_si_possible(paye),
+        "Montant_Exclu_Rejet": entier_si_possible(exclu),
+    }
 
 def parse_date(d):
     """'02/01/2026' -> '2026-01-02'"""
@@ -281,10 +319,9 @@ def parse_bsa(pdf, nom_pdf):
                  15 000,00 0,00 95,00 14 250,00 750,00 0,00"
                  (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx |
                   REMB | NON REMB | TPG*)
-      Note : Montant_Exclu_Rejet = NON_REMB - TPG (le NON_REMB du PDF
-      inclut le ticket modérateur ; les vraies exclusions = NON_REMB - TPG).
-      Ticket_Moderateur = Tx (%) (taux de prise en charge BSA).
-      Cohérence vérifiée : FR.REELS = REMB + (NON_REMB - TPG).
+      Les champs Montant_Reclame_Brut, Ticket_Moderateur,
+      Montant_Paye_Regle et Montant_Exclu_Rejet sont calculés par les quatre
+      règles métier BSA (voir ``calcul_montants_bsa``).
       lignes 3+ : suite du nom (colonne de gauche, x<125) puis libellé de
                  l'acte / médicament (x>=125), tant que la ligne n'est pas un
                  en-tête de page, un total ou le pied de page.
@@ -434,10 +471,7 @@ def parse_bsa(pdf, nom_pdf):
             "Numero_Facture_Prescription": facture,
             "Code_Acte": b["acte"],
             "Libelle_Acte": " ".join(b["libelle"]),
-            "Montant_Reclame_Brut": num(fr),
-            "Ticket_Moderateur": num(tx),
-            "Montant_Paye_Regle": num(remb),
-            "Montant_Exclu_Rejet": max(0, num(nonremb) - num(tpg)),
+            **calcul_montants_bsa(tx, fr, remb, nonremb, tpg),
             "Motif_Observation": motif,
         })
     return meta, lignes
