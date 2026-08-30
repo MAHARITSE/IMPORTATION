@@ -205,10 +205,15 @@ société**, chacun adapté au format de paiement de sa société, selon le mod�
 PAIEMENT CLIENT/
 ├── Modele_Import_Reglements_Decompte_Assurance.xlsx   ← NE PAS RENOMMER
 ├── BSA/                                   ← société BSA (relevés de remboursements)
-│   ├── BSA_paiement_to_excel.py           ← script du format BSA
+│   ├── BSA_paiement_to_excel.py           ← conversion des PDF BSA
+│   ├── BSA_excel_to_modele.py             ← conversion des relevés Excel BSA
 │   ├── BSA_paiement.bat                   ← double-clic = conversion BSA
 │   ├── PDF/                               ← les PDF BSA à convertir (dépôt ici)
 │   │   └── 17-04-2026 BFV-SG 1129370 ....pdf
+│   ├── Excel/                             ← relevés Excel BSA à convertir
+│   │   ├── 14-08-2026 AFG ASSURANCES ....xlsx
+│   │   └── Import/                        ← fichiers au format du modèle (créé auto)
+│   │       └── 14-08-26 BSA 2026 ...xlsx
 │   ├── ERREUR/                            ← (créé si besoin) PDF en erreur déplacés ici
 │   └── 2026/                              ← année du RÈGLEMENT (créé auto)
 │       └── 2026/                          ← année des SOINS payés (créé auto)
@@ -241,8 +246,29 @@ PAIEMENT CLIENT/
 | `PAIEMENT CLIENT/MCI CARE/` (ou `MCI CARE/PDF/`) | **MCI CARE** |
 | `PAIEMENT CLIENT/ASCOMA/` (ou `ASCOMA/PDF/`) | **ASCOMA** |
 
+### Relevés Excel BSA
+
+Un relevé BSA peut aussi être fourni directement en **`.xlsx`** (export mis en
+page du relevé, avec les colonnes `DATE`, `AYANT-DROIT`, `FR.REELS`, `REMB`,
+...). Déposez-le dans :
+
+```
+PAIEMENT CLIENT/BSA/Excel/
+```
+
+Puis lancez `BSA_excel_to_modele.py` ou double-cliquez sur
+`BSA_paiement.bat`. Le fichier d'importation est créé automatiquement dans :
+
+```
+PAIEMENT CLIENT/BSA/Excel/Import/
+```
+
+Les fichiers sources restent inchangés. Le sous-dossier `Import` est ignoré
+comme dossier d'entrée afin de ne pas reconvertir les fichiers déjà produits.
+
 Chaque société a son script et son .bat. On dépose le PDF dans le sous-dossier
-**`PDF/` de sa société**, puis on double-clique sur le .bat (ou `CONVERTIR.bat` choix 2).
+**`PDF/` de sa société**, ou le relevé Excel BSA dans **`BSA/Excel/`**, puis on
+double-clique sur le .bat (ou `CONVERTIR.bat` choix 2).
 Chaque Excel créé est rangé dans **deux sous-dossiers** créés automatiquement :
 d'abord l'**année du règlement** (quand le paiement a été fait), puis l'**année
 des soins payés** (`BSA/2026/2026/…`, `ASCOMA/2025/2024/…`). Car un paiement
@@ -290,6 +316,10 @@ python BSA_paiement_to_excel.py                    tous les PDF du sous-dossier 
 python BSA_paiement_to_excel.py --force            régénérer (écrase l'Excel existant)
 python BSA_paiement_to_excel.py "mon_releve.pdf"   un seul PDF
 
+python BSA_excel_to_modele.py                   tous les relevés de BSA/Excel
+python BSA_excel_to_modele.py --force           régénérer les fichiers d'importation
+python BSA_excel_to_modele.py "mon_releve.xlsx" un seul relevé Excel BSA
+
 python MCI_CARE_paiement_to_excel.py               tous les PDF du sous-dossier MCI CARE\PDF
 python MCI_CARE_paiement_to_excel.py --force       régénérer
 python MCI_CARE_paiement_to_excel.py "mon_decompte.pdf"   un seul PDF
@@ -312,6 +342,13 @@ exemple : BSA/2026/2026/17-04-26 BSA 2026 27-01-26 à 23-02-26 MONTANT 928 750Ar
 exemple : MCI CARE/2026/2026/02-05-26 MCI CARE 2026 02-03-26 à 31-03-26 MONTANT 471 140Ar.xlsx
 
 exemple : ASCOMA/2025/2024/09-01-25 ASCOMA 2025 13-05-24 à 31-08-24 MONTANT 7 035 543Ar.xlsx
+```
+
+Pour un relevé Excel BSA, le même principe de nom est utilisé dans le
+sous-dossier séparé `BSA/Excel/Import/`, par exemple :
+
+```
+BSA/Excel/Import/20-08-26 BSA 2026 14-02-26 à 12-05-26 MONTANT 1 226 080Ar.xlsx
 ```
 
 | Pièce | Où le script la lit |
