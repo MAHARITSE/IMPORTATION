@@ -4,20 +4,21 @@ rem  BSA_paiement.bat - Paiements de la societe BSA
 rem  Format : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
 rem  Les PDF a convertir se deposent dans le sous-dossier PDF :
 rem      BSA\PDF\....pdf
-rem  Convertit les PDF en Excel, classes par annee de paiement
-rem  puis par annee des soins (un paiement de cette annee peut
-rem  regler des soins de l'annee derniere) :
-rem      BSA\<ANNEE_PAIEMENT>\<ANNEE_SOINS>\<DATE_PAIEMENT> BSA <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
-rem      ex : BSA\2026\2026\17-04-26 BSA 2026 27-01-26 a 23-02-26 MONTANT 928 750Ar.xlsx
+rem  Les relevés Excel BSA a convertir se deposent dans :
+rem      BSA\Excel\....xlsx
+rem  Convertit les PDF et les relevés Excel en fichiers d'importation.
+rem  Les sorties PDF restent classees par annee de paiement puis par annee
+rem  des soins ; les sorties issues d'Excel sont dans BSA\Excel\Import\ :
+rem      BSA\Excel\Import\<DATE_PAIEMENT> BSA <ANNEE> <PERIODE> MONTANT <MONTANT>Ar.xlsx
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================
 chcp 65001 >nul
 cd /d "%~dp0"
 where py >nul 2>nul
-if %errorlevel%==0 (
-    py -3 "BSA_paiement_to_excel.py" %*
-) else (
-    python "BSA_paiement_to_excel.py" %*
-)
+if %errorlevel%==0 (set "PY=py -3") else (set "PY=python")
+%PY% "BSA_paiement_to_excel.py" %*
+echo.
+echo --- Releves Excel BSA vers le modele d'importation ---
+%PY% "BSA_excel_to_modele.py" %*
 echo.
 pause

@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  CONVERTIR.bat - Conversion des PDF en Excel
+rem  CONVERTIR.bat - Conversion des documents en Excel
 rem  Au lancement, tapez :
 rem    1 - pour convertir les FACTURES   (dossier FACTURE CLIENT)
 rem    2 - pour convertir les PAIEMENTS  (dossier PAIEMENT CLIENT :
@@ -13,11 +13,13 @@ rem
 rem  1) FACTURE CLIENT  : factures PDF        -> Excel
 rem  2) PAIEMENT CLIENT : paiements (assureurs) -> Excel
 rem     Un script par societe, adapte a son format de paiement :
-rem       PAIEMENT CLIENT\BSA\BSA_paiement_to_excel.py
+rem       PAIEMENT CLIENT\BSA\BSA_paiement_to_excel.py       (PDF)
+rem       PAIEMENT CLIENT\BSA\BSA_excel_to_modele.py         (Excel BSA)
 rem       PAIEMENT CLIENT\MCI CARE\MCI_CARE_paiement_to_excel.py
 rem       PAIEMENT CLIENT\ASCOMA\ASCOMA_to_excel.py
 rem     Les PDF se deposent dans le sous-dossier PDF\ de chaque societe :
 rem       PAIEMENT CLIENT\BSA\PDF,  MCI CARE\PDF,  ASCOMA\PDF
+rem     Les relevés Excel BSA se deposent dans PAIEMENT CLIENT\BSA\Excel\
 rem     (double-clic possible aussi sur le .bat de chaque dossier)
 rem  Double-cliquez sur ce fichier (Windows) pour lancer.
 rem ============================================================
@@ -56,6 +58,9 @@ call :demande_force
 echo.
 echo --- PAIEMENT CLIENT : BSA ---
 %PY% "PAIEMENT CLIENT\BSA\BSA_paiement_to_excel.py" %ARGS% %*
+echo.
+echo --- PAIEMENT CLIENT : BSA (releves Excel) ---
+%PY% "PAIEMENT CLIENT\BSA\BSA_excel_to_modele.py" %ARGS% %*
 echo.
 echo --- PAIEMENT CLIENT : MCI CARE ---
 %PY% "PAIEMENT CLIENT\MCI CARE\MCI_CARE_paiement_to_excel.py" %ARGS% %*
