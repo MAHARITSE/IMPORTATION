@@ -50,10 +50,10 @@ Numéro de facture SALFA (colonne Numero_Facture_Prescription) :
         "Date facture: ... FACTURE SALFA TOLIARA N°006-25/BFV/BSA/SA"
     Chaque ligne Excel reçoit le n° de facture de SON décompte.
 
-PDF en erreur : si un PDF ne peut pas être converti (PDF illisible, format
-non reconnu, aucune ligne trouvée, date introuvable, erreur pendant la
-création de l'Excel), il est DÉPLACÉ dans le sous-dossier BSA/ERREUR/
-(créé automatiquement). Les PDF du dossier ERREUR ne sont pas retraités :
+PDF en erreur : si un PDF est illisible, de format non reconnu, sans ligne
+ou sans date, il est DÉPLACÉ dans le sous-dossier BSA/ERREUR/ (créé
+automatiquement). Une erreur de configuration ou d'écriture Excel ne déplace
+jamais le PDF source. Les PDF du dossier ERREUR ne sont pas retraités :
 remettez le PDF dans PDF/ après correction pour réessayer.
 
 Les fichiers Excel déjà existants ne sont PAS écrasés (protection des
@@ -67,20 +67,30 @@ import shutil
 import unicodedata
 import pdfplumber
 import openpyxl.styles
-from openpyxl import Workbook, load_workbook
+from openpyxl import load_workbook
 
 # Le script se trouve dans le dossier de la société BSA.
 # Les PDF à convertir sont déposés dans le sous-dossier "PDF" de ce dossier
 # (BSA/PDF/) ; à défaut, ils sont cherchés directement dans le dossier BSA.
-# Le modèle Excel est dans le dossier parent "PAIEMENT CLIENT".
+# Le modèle Excel est recherché à côté du script, puis dans son dossier parent.
 # Les Excel produits sont classés dans un sous-dossier au nom de l'année du
 # règlement, puis dans un sous-dossier au nom de l'année des soins payés
 # (un paiement de cette année peut régler des soins de l'année dernière) :
 # ex : BSA/2026/2026/..., créés automatiquement.
 PDF_DIR = os.path.dirname(os.path.abspath(__file__))
 PDF_SUBDIR = os.path.join(PDF_DIR, "PDF")
-MODEL = os.path.join(os.path.dirname(PDF_DIR),
-                     "Modele_Import_Reglements_Decompte_Assurance.xlsx")
+
+# Le dépôt peut être utilisé directement (script et modèle côte à côte) ou
+# avec le script placé dans un sous-dossier de société. On privilégie le
+# modèle voisin du script, puis celui du dossier parent pour rester compatible
+# avec les deux organisations.
+_MODEL_NAME = "Modele_Import_Reglements_Decompte_Assurance.xlsx"
+_MODEL_CANDIDATES = [
+    os.path.join(PDF_DIR, _MODEL_NAME),
+    os.path.join(os.path.dirname(PDF_DIR), _MODEL_NAME),
+]
+MODEL = next((p for p in _MODEL_CANDIDATES if os.path.isfile(p)),
+             _MODEL_CANDIDATES[0])
 SHEET = "Modele_Reglements"
 SOCIETE = "BSA"  # société par défaut (fallback)
 
@@ -88,30 +98,6 @@ HEADERS = ["Ref_Decompte", "Date_Reglement", "Date_Soins", "Nom_Agent", "Matricu
            "Numero_Facture_Prescription", "Code_Acte", "Libelle_Acte",
            "Montant_Reclame_Brut", "Ticket_Moderateur", "Montant_Paye_Regle",
            "Montant_Exclu_Rejet", "Motif_Observation"]
-
-# Montant malgache : "15 000,00" / "0,00" / "112 500,00"
-AMT = r"(?:\d{1,3}(?:[ \u00a0]\d{3})*|\d+),\d{2}"
-
-# Ligne de données BSA : date + (nom + executant) + 6 montants
-DATA_RE = re.compile(
-    r"^(\d{2}/\d{2}/\d{4})\s+(.*?)\s+"
-    + r"\s+".join(["(" + AMT + ")"] * 6) + r"$")
-
-# Ligne d'en-tête de bloc : "NUM-SEQ [ADHESION:] MATRICULE NOM... [CG Client: ...]"
-# Format BSA :    "1071921-1 ADHESION: 950179 NOM... CG Client: ..."
-# Format autres : "997712-1 23961 NOM... CGPR EXECUTANT (CONTRAT...)"
-BLOCK_RE = re.compile(r"^(\d{4,}-\d+)\s+(?:ADHESION:\s*)?(\w+)\s+(.+)$")
-
-# N° de facture SALFA : "FA-02/BFV/26-022" (ancien format) ou
-# "N°006-25/BFV/BSA/SA" (format 2025). La ligne "Facture N°: N°006- ..." du
-# PDF est tronquée (les montants suivent tout de suite) : seul le n° COMPLET
-# de la ligne "Date facture: ..." est retenu.
-FACTURE_RE = re.compile(r"(FA-\d{2}[-/][\w/\-]*\d|N°\s*\d{2,4}[-/][\w/\-]*\w)")
-
-# Tokens qui marquent la fin d'un bloc (en-têtes de page, totaux, pied de page)
-STOP_TOKENS = {"SALFATU", "TOLIARY", "MADAGASCAR", "Andraharo", "RELEVE",
-               "Lot", "N°", "Banque", "Ville", "DATE", "AYANT-DROIT",
-               "EXECUTANT", "FR.REELS", "TPG*", "REMBOURSEMENTS"}
 
 # Détection de la société depuis le nom du fichier PDF.
 # Formats reconnus :
@@ -180,12 +166,6 @@ def fmt_amount(n):
     if abs(n - round(n)) < 0.005:
         return f"{int(round(n)):,}".replace(",", " ")
     return f"{n:,.1f}".replace(",", " ").replace(".", ",")
-
-
-def num(s):
-    """'15 000,00' -> 15000 (int si entier)"""
-    v = amount_to_float(s)
-    return int(v) if v == int(v) else v
 
 
 def calcul_montants_bsa(tx, fr_reels, remb, non_remb, tpg):
@@ -352,223 +332,486 @@ def group_words(words, tol=2.5):
         out.append({
             "text": " ".join(w["text"] for w in g),
             "x0": g[0]["x0"],
+            "top": min(w["top"] for w in g),
+            "bottom": max(w["bottom"] for w in g),
             "words": [(w["x0"], w["x1"], w["text"]) for w in g],
         })
     return out
 
 
-def is_stop(t):
-    """Vrai si la ligne est un en-tête de page / total / pied de page."""
-    if re.fullmatch(r"\d+\s*/\s*\d+", t):          # pied de page "2 /4"
-        return True
-    if re.match(r"^(Facture|Total|Date facture|Nbre)\b", t):
-        return True
-    if re.fullmatch(AMT + r"(?:\s+" + AMT + r")*", t):  # ligne de montants seule
-        return True
-    return bool(set(t.split()) & STOP_TOKENS)
-
-
-def full_pdf_text(pdf):
-    return "\n".join((page.extract_text() or "") for page in pdf.pages)
-
 
 # --------------------------------------------------------------------------
 # Format BSA : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
 # --------------------------------------------------------------------------
-def parse_bsa(pdf, nom_pdf):
-    """Extrait le méta du relevé et les lignes de remboursements.
+def date_ocr(texte):
+    """Normalise une date de soin, même si l'OCR a lu les ``/`` comme 0/1.
 
-    Chaque ligne du PDF est un bloc :
-      ligne 1 : "1071921-1 ADHESION: 950179 RAKOTOARINAIVO CLOTAIRE CG Client: ..."
-      ligne 2 : "05/02/2026 RAKOTOARINAIVO ASSOCIATION DISPENSAIRE LOTERANA
-                 15 000,00 0,00 95,00 14 250,00 750,00 0,00"
-                 (date | nom patient | executant | FR.REELS | 1ERE MUT | Tx |
-                  REMB | NON REMB | TPG*)
-      Les champs Montant_Reclame_Brut, Ticket_Moderateur,
-      Montant_Paye_Regle et Montant_Exclu_Rejet sont calculés par les quatre
-      règles métier BSA (voir ``calcul_montants_bsa``).
-      lignes 3+ : suite du nom (colonne de gauche, x<125) puis libellé de
-                 l'acte / médicament (x>=125), tant que la ligne n'est pas un
-                 en-tête de page, un total ou le pied de page.
+    Exemples réellement rencontrés : ``04/04/2025``, ``0410412025`` et
+    ``280042025``. La fonction reste volontairement stricte sur la validité du
+    jour, du mois et de l'année afin de ne pas prendre un montant pour une date.
     """
-    lines = []
-    for page in pdf.pages:
-        lines.extend(group_words(page.extract_words()))
-    text = "\n".join(l["text"] for l in lines)
+    texte = str(texte or "")
+    m = re.search(r"(\d{2})\D+(\d{2})\D+(\d{4})", texte)
+    candidats = [m.groups()] if m else []
+    chiffres = re.sub(r"\D", "", texte)
+    if len(chiffres) == 8:
+        candidats.append((chiffres[:2], chiffres[2:4], chiffres[4:]))
+    elif len(chiffres) == 9:
+        # Un séparateur a été reconnu comme un chiffre : 280042025.
+        candidats.extend([
+            (chiffres[:2], chiffres[3:5], chiffres[5:]),
+            (chiffres[:2], chiffres[2:4], chiffres[5:]),
+        ])
+    elif len(chiffres) == 10:
+        # Les deux séparateurs ont été reconnus comme des chiffres :
+        # 0410412025 -> 04/04/2025.
+        candidats.append((chiffres[:2], chiffres[3:5], chiffres[6:]))
 
-    # --- Métadonnées du relevé ---
-    meta = {"ref": None, "lot": None, "date_reglement": None, "virement": None,
-            "facture": None, "factures_decompte": {}, "nb_declare": None}
+    for jour, mois, annee in candidats:
+        try:
+            if 1 <= int(jour) <= 31 and 1 <= int(mois) <= 12 \
+                    and 2000 <= int(annee) <= 2099:
+                return f"{int(jour):02d}/{int(mois):02d}/{int(annee):04d}"
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def montant_ocr(texte):
+    """Lit un montant OCR et corrige la virgule décimale souvent supprimée.
+
+    Les relevés sont en ariary entiers. Ainsi ``720000`` dans la colonne REMB
+    représente ``7 200,00`` et non 720 000. Les contrôles croisés entre les
+    colonnes effectuent ensuite les corrections des rares chiffres manquants.
+    """
+    brut = str(texte or "").replace("O", "0").replace("o", "0")
+    brut = re.sub(r"[^\d.,-]", "", brut)
+    if not brut:
+        return None
+    if not re.search(r"[.,]", brut):
+        try:
+            valeur = int(re.sub(r"\D", "", brut))
+        except ValueError:
+            return None
+        if len(brut) >= 4 and brut.endswith("00"):
+            valeur /= 100
+    else:
+        valeur = amount_to_float(brut)
+    # Tous les montants MGA de ces relevés finissent par ,00. Arrondir élimine
+    # aussi les caractères parasites concaténés par certains calques OCR.
+    return int(round(valeur))
+
+
+def taux_ocr(texte):
+    """Lit le taux OCR (``8000`` -> 80, ``900``/``9000`` -> 90)."""
+    brut = str(texte or "").replace("O", "0").replace("o", "0")
+    chiffres = re.sub(r"\D", "", brut)
+    if not chiffres:
+        return None
+    if re.search(r"[.,]", brut):
+        valeur = amount_to_float(brut)
+    else:
+        valeur = int(chiffres)
+        if valeur == 900:             # OCR de 90,00 avec un zéro perdu
+            valeur = 90
+        elif 1000 <= valeur <= 10000 and valeur % 100 == 0:
+            valeur /= 100             # 8000 / 9000 / 10000
+    return int(round(valeur))
+
+
+def _centre(mot):
+    return (mot["x0"] + mot["x1"]) / 2
+
+
+def _texte_mots(mots):
+    """Assemble et nettoie une liste de mots pdfplumber."""
+    texte = " ".join(w["text"] for w in sorted(
+        mots, key=lambda w: (w["top"], w["x0"])))
+    texte = re.sub(r"\s+", " ", texte).strip(" |_—–-")
+    return texte
+
+
+COLONNES_MONTANTS = (
+    (300, 360),  # FR.REELS
+    (360, 405),  # 1ERE MUT
+    (405, 445),  # Tx (%)
+    (445, 495),  # REMB
+    (495, 545),  # NON REMB
+    (545, 590),  # TPG*
+)
+
+
+def _valeurs_ligne_ocr(mots_page, mot_date):
+    """Extrait les six colonnes chiffrées grâce à leurs coordonnées.
+
+    Une expression régulière sur le texte complet n'est pas assez robuste :
+    le calque OCR coupe parfois ``25 000,00`` en deux mots, décale les montants
+    de quelques pixels ou supprime une valeur. Les colonnes du PDF, elles,
+    restent toujours aux mêmes abscisses.
+    """
+    proches = [w for w in mots_page
+               if 300 <= _centre(w) < 590
+               and re.search(r"\d", w["text"])
+               and abs(w["bottom"] - mot_date["bottom"]) < 9]
+    if not proches:
+        return [""] * 6
+    # La colonne 1ERE MUT contient presque toujours 0,00 et fournit donc le
+    # meilleur alignement. À défaut, n'importe quelle autre colonne chiffrée
+    # de la même ligne sert de repère.
+    candidats_mutuelle = [w for w in proches if 360 <= _centre(w) < 405]
+    candidats_base = candidats_mutuelle or proches
+    base = min(candidats_base,
+               key=lambda w: abs(w["bottom"] - mot_date["bottom"]))["bottom"]
+    valeurs = []
+    for gauche, droite in COLONNES_MONTANTS:
+        mots = [w for w in mots_page
+                if gauche <= _centre(w) < droite
+                and re.search(r"\d", w["text"])
+                and abs(w["bottom"] - base) <= 1.7]
+        valeurs.append("".join(w["text"] for w in sorted(mots,
+                                                           key=lambda w: w["x0"])))
+    return valeurs
+
+
+def _score_taux(taux, rembourse, brut):
+    """Score d'une hypothèse de correction (plus petit = meilleur)."""
+    if not brut or taux is None:
+        return 0
+    ratio = 100 * rembourse / brut
+    if taux == 0:
+        return 0 if rembourse == 0 else 100 + ratio
+    # Un acte plafonné peut avoir un ratio inférieur au taux contractuel
+    # (ex. taux 95 %, remboursement plafonné à 15 000 sur 20 000). En revanche
+    # un ratio nettement supérieur au taux lu indique presque toujours une
+    # erreur OCR.
+    return (ratio - taux) * 4 if ratio > taux else (taux - ratio) * .15
+
+
+def corriger_montants_ocr(fr, mutuelle, taux, rembourse, non_remb, tpg):
+    """Réconcilie les montants d'une ligne à partir des règles du relevé.
+
+    Identité utilisée :
+      FR.REELS = 1ERE MUT + REMB + (NON REMB - TPG*)
+
+    Si un seul chiffre est absent ou erroné, le taux permet de choisir la
+    colonne à corriger sans modifier les cas métier particuliers (plafond,
+    exclusion et tiers payant).
+    """
+    mutuelle = 0 if mutuelle is None else mutuelle
+    tpg = 0 if tpg is None else tpg
+
+    if rembourse is None and fr is not None and non_remb is not None:
+        rembourse = max(0, fr - mutuelle - non_remb + tpg)
+    if non_remb is None and fr is not None and rembourse is not None:
+        non_remb = max(0, fr - mutuelle - rembourse + tpg)
+    if rembourse is None or non_remb is None:
+        return None
+
+    attendu = mutuelle + rembourse + max(0, non_remb - tpg)
+    fr_manquant = fr is None
+    if fr_manquant:
+        fr = attendu
+        # Si REMB a perdu un zéro, la simple somme reste cohérente mais son
+        # ratio est impossible (ex. 560 au lieu de 5 600 à 80 %).
+        if taux and 0 < taux < 100 and tpg == 0 and mutuelle == 0 and fr:
+            ratio = 100 * rembourse / fr
+            if ratio > taux + 3 or ratio < taux - 25:
+                rembourse_calc = round(non_remb * taux / (100 - taux))
+                if rembourse_calc >= 0:
+                    rembourse = rembourse_calc
+                    fr = rembourse + non_remb
+    elif abs(fr - attendu) >= 1:
+        if fr <= mutuelle + rembourse and attendu > fr:
+            # FR.REELS illisible (0, fragments superposés...) : les autres
+            # colonnes permettent de le reconstruire directement.
+            fr = attendu
+        else:
+            # Trois hypothèses, chacune ne corrige qu'une colonne. Le taux lu
+            # départage les cas où l'OCR a supprimé un zéro.
+            hypotheses = [
+                (attendu, rembourse, non_remb),
+                (fr, max(0, fr - mutuelle - non_remb + tpg), non_remb),
+                (fr, rembourse, max(0, fr - mutuelle - rembourse + tpg)),
+            ]
+            fr, rembourse, non_remb = min(
+                hypotheses,
+                key=lambda h: _score_taux(taux, h[1], h[0]))
+
+    # Corrige un taux manifestement inférieur au ratio payé. Les taux
+    # contractuels supérieurs au ratio sont conservés (actes plafonnés).
+    if fr and rembourse and taux is not None:
+        ratio = 100 * rembourse / fr
+        taux_valides = (20, 50, 60, 70, 75, 80, 85, 90, 95, 100)
+        if taux not in (0, *taux_valides) or ratio > taux + 3:
+            taux = min(taux_valides, key=lambda v: abs(v - ratio))
+
+    return tuple(int(round(v)) for v in
+                 (fr, mutuelle, taux or 0, rembourse, non_remb, tpg))
+
+
+def _normaliser_code(code):
+    code = re.sub(r"[^A-Za-z0-9€&]", "", code or "").upper()
+    corrections = {
+        "CE": "CG", "€": "EB", "€8": "EB", "&": "EB",
+        "DE": "DC", "DSO": "DSO",
+    }
+    return corrections.get(code, code)
+
+
+def _numero_facture(texte):
+    """Extrait un numéro de facture, ancien (FA-...) ou nouveau (004-25/...)."""
+    normalise = sans_accent(texte)
+    ancien = re.search(r"\bFA-\d{2}[-/][A-Z0-9/.-]*\d\b", normalise)
+    if ancien:
+        return ancien.group(0)
+    m = re.search(
+        r"(?:(N)\s*[°ºO]\s*)?(\d{3,4}[-/]\d{2}(?:/[A-Z0-9.*-]+)+)",
+        normalise)
+    if not m:
+        return ""
+    numero = m.group(2).rstrip(".-")
+    return ("N°" if m.group(1) else "") + numero
+
+
+def parse_bsa(pdf, nom_pdf):
+    """Extrait les métadonnées et toutes les lignes, y compris d'un PDF OCR.
+
+    Le parseur s'appuie sur les coordonnées fixes des colonnes plutôt que sur
+    une ligne de texte parfaite. Il supporte donc les coupures de milliers,
+    virgules supprimées, dates dont les barres sont lues comme 0/1, valeurs
+    verticalement décalées et références dont le tiret a disparu.
+    """
+    pages = []
+    lignes_visuelles = []
+    for numero_page, page in enumerate(pdf.pages):
+        mots = page.extract_words()
+        pages.append(mots)
+        for ligne in group_words(mots):
+            ligne["page"] = numero_page
+            lignes_visuelles.append(ligne)
+    text = "\n".join(l["text"] for l in lignes_visuelles)
+
+    meta = {"ref": None, "lot": None, "date_reglement": None,
+            "virement": None, "facture": None,
+            "factures_decompte": {}, "nb_declare": None}
     m = re.search(r"N°\s*:\s*(\d+)", text)
     if m:
         meta["ref"] = m.group(1)
     m = re.search(r"Lot\s*:\s*(\d+)", text)
     if m:
         meta["lot"] = m.group(1)
-    m = re.search(r"\ble\s+(\d{2}/\d{2}/\d{4})", text)   # "A , le 17/04/2026"
+    m = re.search(r"\bA\s*,?\s*le\s+(\d{2}/\d{2}/\d{4})", text,
+                  re.IGNORECASE)
     if m:
         meta["date_reglement"] = m.group(1)
-    m = re.search(r"virement de ([\d\u00a0 ]+),(\d{2})\s*MGA", text)
+    m = re.search(r"virement de ([\d\u00a0 .]+),(\d{2})\s*MGA", text,
+                  re.IGNORECASE)
     if m:
         meta["virement"] = amount_to_float(m.group(1) + "," + m.group(2))
-    m = re.search(r"Total général\s*:\s*(\d+)\s+(\d+)\s+", text)
+    m = re.search(r"Total g[ée]n[ée]ral\s*:\s*(\d+)\s+(\d+)", text,
+                  re.IGNORECASE)
     if m:
         meta["nb_declare"] = int(m.group(2))
 
-    # --- N° de facture SALFA, par décompte ---
-    #   "Total décompte : 1015497"
-    #   "Date facture: ... FACTURE SALFA TOLIARA N°006-25/BFV/BSA/SA"
-    # (dans cet ordre) -> factures_decompte["1015497"] = "N°006-25/BFV/BSA/SA".
-    # Un n° lu avant tout "Total décompte" (ancien format : un seul pour le
-    # relevé) est mémorisé dans meta["facture"] et servi à toutes les lignes.
-    cur_dec = None
-    for l in lines:
-        t = l["text"]
-        m = re.search(r"Total d[ée]compte\s*:?\s*(\d{4,})", t)
-        if m:
-            cur_dec = m.group(1)
-            continue
-        if "facture" not in t.lower():
-            continue
-        m = FACTURE_RE.search(t)
-        if m:
-            if cur_dec is not None:
-                meta["factures_decompte"].setdefault(cur_dec, m.group(1))
-            elif meta["facture"] is None:
-                meta["facture"] = m.group(1)
-    if meta["facture"] is None:      # ancien format : n° "FA-..." unique
-        for cand in re.findall(r"n°\s*:?\s*(FA-[\w/\-]+)", text):
-            if cand[-1].isdigit():   # le n° complet finit par un chiffre
-                meta["facture"] = cand
+    lignes_brutes = []
+    decompte_courant = None
+    for numero_page, mots_page in enumerate(pages):
+        # Les références de bloc se situent dans la première colonne et juste
+        # au-dessus de chaque date de soin.
+        entetes = [w for w in mots_page
+                   if w["x0"] < 90
+                   and len(re.sub(r"\D", "", w["text"])) >= 7
+                   and not date_ocr(w["text"])]
+        dates = [w for w in mots_page
+                 if w["x0"] < 50 and date_ocr(w["text"])]
+        entetes.sort(key=lambda w: w["top"])
+        dates.sort(key=lambda w: w["top"])
 
-    # --- Blocs de remboursements ---
-    blocks = []
-    cur = None
-    for l in lines:
-        t = l["text"]
-        m = BLOCK_RE.match(t)
-        if m:
-            if cur:
-                blocks.append(cur)
-            # nom (x<255) / acte (x>=255) dans la ligne d'en-tête ;
-            # on saute les mots jusqu'au matricule (capturé par BLOCK_RE).
-            names, actes = [], []
-            state = "skip"  # skip -> nom/acte après le matricule
-            matricule_word = m.group(2)
-            for x0, x1, w in l["words"]:
-                if w == "Client:":
-                    break
-                if state == "skip":
-                    if w == matricule_word and x0 > 90:
-                        state = "ok"
-                    continue
-                if state == "ok":
-                    (actes if x0 >= 255 else names).append(w)
-            cur = {"num": m.group(1), "matricule": m.group(2),
-                   "nom_entete": " ".join(names), "acte": " ".join(actes),
-                   "data": None, "nom_extra": [], "libelle": []}
-            continue
-        if cur is None:
-            continue
-        dm = DATA_RE.match(t)
-        if dm and cur["data"] is None:
-            cur["data"] = dm
-            continue
-        if is_stop(t):
-            blocks.append(cur)
-            cur = None
-            continue
-        if cur["data"] is None:
-            continue  # bruit avant la ligne de données (en-têtes de colonne...)
-        if l["x0"] < 125:
-            cur["nom_extra"].append(t)   # suite du nom (colonne AYANT-DROIT)
-        else:
-            cur["libelle"].append(t)     # libellé de l'acte / médicament
-    if cur:
-        blocks.append(cur)
+        for mot_date in dates:
+            precedents = [w for w in entetes
+                          if 3 < mot_date["top"] - w["top"] < 30]
+            if not precedents:
+                print(f"!! {nom_pdf} : date {mot_date['text']} sans bloc -> ignorée")
+                continue
+            entete = max(precedents, key=lambda w: w["top"])
+            suivants = [w["top"] for w in entetes if w["top"] > entete["top"]]
+            fin = min(suivants) if suivants else mot_date["top"] + 35
 
-    # --- Construction des lignes Excel ---
+            mots_entete = [w for w in mots_page
+                           if abs(w["top"] - entete["top"]) <= 2.5]
+            brut_ref = entete["text"]
+            chiffres_ref = re.sub(r"\D", "", brut_ref)
+            m_ref = re.match(r"(\d{6,})[-–—](\d+)", brut_ref)
+            if m_ref:
+                decompte_courant = m_ref.group(1)
+                numero_ligne = f"{m_ref.group(1)}-{m_ref.group(2)}"
+            elif decompte_courant and chiffres_ref.startswith(decompte_courant):
+                suite = chiffres_ref[len(decompte_courant):]
+                numero_ligne = f"{decompte_courant}-{suite}" if suite else brut_ref
+            else:
+                numero_ligne = brut_ref
+
+            matricule = _texte_mots([
+                w for w in mots_entete
+                if 95 <= _centre(w) < 140 and re.search(r"\d", w["text"])
+            ])
+            code = _normaliser_code(_texte_mots([
+                w for w in mots_entete if 245 <= _centre(w) < 290
+            ]))
+
+            valeurs = _valeurs_ligne_ocr(mots_page, mot_date)
+            fr = montant_ocr(valeurs[0])
+            mutuelle = montant_ocr(valeurs[1])
+            taux = taux_ocr(valeurs[2])
+            rembourse = montant_ocr(valeurs[3])
+            non_remb = montant_ocr(valeurs[4])
+            tpg = montant_ocr(valeurs[5])
+            montants = corriger_montants_ocr(
+                fr, mutuelle, taux, rembourse, non_remb, tpg)
+            if montants is None:
+                print(f"!! {nom_pdf} : montants illisibles pour le bloc "
+                      f"{numero_ligne} -> ignoré")
+                continue
+            fr, mutuelle, taux, rembourse, non_remb, tpg = montants
+
+            base_bas = min(
+                (w["bottom"] for w in mots_page
+                 if 360 <= _centre(w) < 405
+                 and re.search(r"\d", w["text"])
+                 and abs(w["bottom"] - mot_date["bottom"]) < 9),
+                default=mot_date["bottom"])
+            mots_nom = [w for w in mots_page
+                        if 45 <= _centre(w) < 132
+                        and mot_date["top"] - 2 <= w["top"] < fin]
+            nom = _texte_mots([
+                w for w in mots_nom
+                if re.search(r"[A-Za-zÀ-ÿ]", w["text"])
+            ])
+            mots_detail = [w for w in mots_page
+                           if base_bas + 1 < w["top"] < fin]
+            mots_libelle = []
+            for ligne_detail in group_words(mots_detail):
+                mots_de_ligne = [w for w in mots_detail
+                                 if abs(w["top"] - ligne_detail["top"]) <= 2.5
+                                 and 132 <= _centre(w) < 590]
+                if any(re.search(r"[A-Za-zÀ-ÿ]", w["text"])
+                       for w in mots_de_ligne):
+                    # Une fois la ligne identifiée comme libellé, conserver
+                    # aussi ses nombres (dosage, plafond, n° de facture...).
+                    mots_libelle.extend(mots_de_ligne)
+            libelle = _texte_mots(mots_libelle)
+
+            motif = f"Prise en charge : {taux:g}%"
+            if mutuelle:
+                motif += f" ; 1ère mutuelle : {fmt_amount(mutuelle)} Ar"
+
+            montants_excel = calcul_montants_bsa(
+                taux, fr, rembourse, non_remb, tpg)
+            lignes_brutes.append({
+                "page": numero_page,
+                "top": entete["top"],
+                "decompte": decompte_courant,
+                "numero_ligne": numero_ligne,
+                "Date_Soins": parse_date(date_ocr(mot_date["text"])),
+                "Nom_Agent": nom,
+                "Matricule": matricule,
+                "Code_Acte": code,
+                "Libelle_Acte": libelle,
+                "Montant_Reclame_Brut": fr,
+                "Ticket_Moderateur": montants_excel["Ticket_Moderateur"],
+                "Montant_Paye_Regle": montants_excel["Montant_Paye_Regle"],
+                "Montant_Exclu_Rejet": montants_excel["Montant_Exclu_Rejet"],
+                "Motif_Observation": motif,
+            })
+
+    # La ligne « Date facture » suit toujours les soins de son décompte. Cette
+    # position permet l'association même lorsque « Total décompte » a perdu son
+    # numéro pendant l'OCR.
+    for ligne in lignes_visuelles:
+        if not ligne["text"].lower().startswith("date facture"):
+            continue
+        facture = _numero_facture(ligne["text"])
+        if not facture:
+            continue
+        avant = [l for l in lignes_brutes
+                 if (l["page"], l["top"]) < (ligne["page"], ligne["top"])]
+        if avant:
+            decompte = max(avant, key=lambda l: (l["page"], l["top"]))["decompte"]
+            if decompte:
+                meta["factures_decompte"][decompte] = facture
+        if meta["facture"] is None:
+            meta["facture"] = facture
+
+    # Ancien format : un unique numéro FA-... peut apparaître ailleurs que sur
+    # une ligne « Date facture ». Il s'applique alors à tout le relevé.
+    if meta["facture"] is None:
+        meta["facture"] = _numero_facture(text) or None
+
     lignes = []
-    for b in blocks:
-        if b["data"] is None:
-            print(f"!! {nom_pdf} : bloc {b['num']} sans ligne de données -> ignoré")
-            continue
-        dm = b["data"]
-        date, milieu, fr, mut, tx, remb, nonremb, tpg = dm.groups()
-
-        # Nom du patient : 1re ligne sur la ligne de données (avant "ASSOCIATION")
-        # + lignes de suite dans la colonne du nom.
-        nom = re.split(r"\s+ASSOCIATION\b", milieu, 1)[0].strip()
-        if b["nom_extra"]:
-            nom = (nom + " " + " ".join(b["nom_extra"])).strip()
-        if not nom:
-            nom = b["nom_entete"]
-
-        tx_v = amount_to_float(tx)
-        motif = f"Prise en charge : {tx_v:g}%"
-        if amount_to_float(mut) > 0:
-            motif += f" ; 1ère mutuelle : {fmt_amount(amount_to_float(mut))} Ar"
-
-        # Cohérence : FR.REELS = REMB + (NON_REMB - TPG)
-        fr_v = amount_to_float(fr)
-        remb_v = amount_to_float(remb)
-        nonremb_v = amount_to_float(nonremb)
-        tpg_v = amount_to_float(tpg)
-        exclu_v = max(0, nonremb_v - tpg_v)
-        attendu = remb_v + exclu_v
-        if abs(fr_v - attendu) >= 1:
-            print(f"   !! INCOHÉRENCE {nom_pdf} : bloc {b['num']} "
-                  f"{date} {nom} : FR.REELS={fmt_amount(fr_v)} ≠ "
-                  f"REMB({fmt_amount(remb_v)}) + "
-                  f"NON_REMB-TPG({fmt_amount(exclu_v)}) = "
-                  f"{fmt_amount(attendu)}")
-
-        # Facture SALFA de CE décompte (format 2025), sinon celle du relevé.
-        decompte = b["num"].split("-")[0]
-        facture = (meta["factures_decompte"].get(decompte)
-                   or meta["facture"] or "")
-
+    date_reglement = (parse_date(meta["date_reglement"])
+                      if meta["date_reglement"] else "")
+    for l in lignes_brutes:
+        decompte = l.pop("decompte")
+        l.pop("page")
+        l.pop("top")
+        l.pop("numero_ligne")
         lignes.append({
             "Ref_Decompte": meta["ref"] or "",
-            "Date_Reglement": parse_date(meta["date_reglement"]) if meta["date_reglement"] else "",
-            "Date_Soins": parse_date(date),
-            "Nom_Agent": nom,
-            "Matricule": b["matricule"],
-            "Numero_Facture_Prescription": facture,
-            "Code_Acte": b["acte"],
-            "Libelle_Acte": " ".join(b["libelle"]),
-            **calcul_montants_bsa(tx, fr, remb, nonremb, tpg),
-            "Motif_Observation": motif,
+            "Date_Reglement": date_reglement,
+            **l,
+            "Numero_Facture_Prescription": (
+                meta["factures_decompte"].get(decompte)
+                or meta["facture"] or ""),
         })
+        # Réordonner selon HEADERS est fait au moment de l'écriture.
     return meta, lignes
-
 
 # --------------------------------------------------------------------------
 # Écriture Excel (mise en forme du modèle)
 # --------------------------------------------------------------------------
 def style_sheet(ws):
-    model_ws = load_workbook(MODEL)[SHEET]
-    widths = {k: v.width for k, v in model_ws.column_dimensions.items()}
-    for col, w in widths.items():
-        ws.column_dimensions[col].width = w
     for r in range(1, ws.max_row + 1):
         for c in range(1, 14):
-            ws.cell(row=r, column=c).font = openpyxl.styles.Font(name="Calibri", size=12)
+            ws.cell(row=r, column=c).font = openpyxl.styles.Font(
+                name="Calibri", size=12, bold=(r == 1))
     for r in range(2, ws.max_row + 1):
         for c in (9, 10, 11, 12):  # montants
             ws.cell(row=r, column=c).number_format = "#,##0"
     ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:M{ws.max_row}"
 
 
 def write_workbook(path, lignes):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = SHEET
-    ws.append(HEADERS)
-    for l in lignes:
-        ws.append([l[h] for h in HEADERS])
+    """Remplit une copie du modèle et l'enregistre de façon atomique.
+
+    Les trois exemples de la feuille ``Modele_Reglements`` sont supprimés,
+    tandis que la feuille ``Guide_Rattachement`` et les largeurs de colonnes du
+    modèle sont conservées.
+    """
+    if not os.path.isfile(MODEL):
+        raise FileNotFoundError(f"Modèle Excel introuvable : {MODEL}")
+    wb = load_workbook(MODEL)
+    if SHEET not in wb.sheetnames:
+        raise KeyError(f"Feuille {SHEET!r} absente du modèle Excel")
+    ws = wb[SHEET]
+    if ws.max_row > 1:
+        ws.delete_rows(2, ws.max_row - 1)
+    for colonne, entete in enumerate(HEADERS, start=1):
+        ws.cell(row=1, column=colonne, value=entete)
+    for ligne in lignes:
+        ws.append([ligne[h] for h in HEADERS])
     style_sheet(ws)
-    wb.save(path)
+
+    # Évite de laisser un fichier .xlsx incomplet si Excel, le disque ou une
+    # synchronisation cloud interrompt la sauvegarde.
+    temporaire = path + ".tmp.xlsx"
+    try:
+        wb.save(temporaire)
+        os.replace(temporaire, path)
+    finally:
+        wb.close()
+        if os.path.exists(temporaire):
+            os.remove(temporaire)
 
 
 # --------------------------------------------------------------------------
@@ -618,16 +861,22 @@ def deplacer_pdf_en_erreur(pdf_path, raison):
 
 
 def recap_erreurs():
-    """Affiche le récapitulatif des PDF en erreur (fin de traitement)."""
+    """Affiche le récapitulatif des erreurs de traitement."""
     if ERREURS:
-        print(f"\n== {len(ERREURS)} PDF en erreur, déplacés dans "
-              f"le sous-dossier {ERREUR_DIRNAME} ==")
+        print(f"\n== {len(ERREURS)} erreur(s) de traitement ==")
         for nom, raison in ERREURS:
             print(f"   - {nom} : {raison}")
 
 
 # --------------------------------------------------------------------------
 def main():
+    if not os.path.isfile(MODEL):
+        print("!! Modèle Excel introuvable. Emplacements vérifiés :")
+        for candidat in _MODEL_CANDIDATES:
+            print(f"   - {candidat}")
+        print("   Les PDF sont conservés dans leur dossier.")
+        return 1
+
     args = [a for a in sys.argv[1:] if a != "--force"]
     force = "--force" in sys.argv[1:]
 
@@ -725,13 +974,15 @@ def main():
         except Exception as e:
             print(f"!! {nom_pdf} : erreur pendant la création de l'Excel "
                   f"({type(e).__name__}: {e})")
-            deplacer_pdf_en_erreur(pdf_path, "erreur de création de l'Excel")
+            print("   -> PDF conservé : l'erreur ne vient pas nécessairement du PDF")
+            ERREURS.append((nom_pdf, "erreur de création de l'Excel (PDF conservé)"))
             continue
         print(f"OK {relatif} : {ref} | {len(lignes)} lignes | "
               f"Payé {fmt_amount(total_paye)} Ar  <- {nom_pdf}")
 
     recap_erreurs()
+    return 1 if ERREURS else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
