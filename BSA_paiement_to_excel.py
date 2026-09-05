@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-BSA_paiement_to_excel.py — société BSA
-=======================================
-Conversion des relevés de remboursements BSA (PDF) en fichiers Excel
+BSA_paiement_to_excel.py — Conversion multi-société
+=====================================================
+Conversion des relevés de remboursements (PDF) en fichiers Excel
 selon le modèle "Modele_Import_Reglements_Decompte_Assurance.xlsx"
 (feuille Modele_Reglements, 13 colonnes).
+
+Sociétés supportées : BSA, ARO, SARO, ORANGE, ORANGE MONEY,
+AFG ASSURANCES, ALLIANZ, BRED, ACCES, GRT, BMOI, BFV-SG, VIVO, etc.
+La société est détectée automatiquement depuis le nom du fichier PDF.
 
 Format traité (propre à BSA) : RELEVE DE REMBOURSEMENTS DES FRAIS DE SANTE
   - ordre de virement en 1re page : N°, Lot, "A , le 17/04/2026",
@@ -78,7 +82,7 @@ PDF_SUBDIR = os.path.join(PDF_DIR, "PDF")
 MODEL = os.path.join(os.path.dirname(PDF_DIR),
                      "Modele_Import_Reglements_Decompte_Assurance.xlsx")
 SHEET = "Modele_Reglements"
-SOCIETE = "BSA"
+SOCIETE = "BSA"  # société par défaut (fallback)
 
 HEADERS = ["Ref_Decompte", "Date_Reglement", "Date_Soins", "Nom_Agent", "Matricule",
            "Numero_Facture_Prescription", "Code_Acte", "Libelle_Acte",
@@ -93,8 +97,10 @@ DATA_RE = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.*?)\s+"
     + r"\s+".join(["(" + AMT + ")"] * 6) + r"$")
 
-# Ligne d'en-tête de bloc BSA : "1071921-1 ADHESION: 950179 NOM... CG Client: ..."
-BLOCK_RE = re.compile(r"^(\d{4,}-\d+)\s+ADHESION:\s*(\d+)\s+(.+)$")
+# Ligne d'en-tête de bloc : "NUM-SEQ [ADHESION:] MATRICULE NOM... [CG Client: ...]"
+# Format BSA :    "1071921-1 ADHESION: 950179 NOM... CG Client: ..."
+# Format autres : "997712-1 23961 NOM... CGPR EXECUTANT (CONTRAT...)"
+BLOCK_RE = re.compile(r"^(\d{4,}-\d+)\s+(?:ADHESION:\s*)?(\w+)\s+(.+)$")
 
 # N° de facture SALFA : "FA-02/BFV/26-022" (ancien format) ou
 # "N°006-25/BFV/BSA/SA" (format 2025). La ligne "Facture N°: N°006- ..." du
@@ -106,6 +112,34 @@ FACTURE_RE = re.compile(r"(FA-\d{2}[-/][\w/\-]*\d|N°\s*\d{2,4}[-/][\w/\-]*\w)")
 STOP_TOKENS = {"SALFATU", "TOLIARY", "MADAGASCAR", "Andraharo", "RELEVE",
                "Lot", "N°", "Banque", "Ville", "DATE", "AYANT-DROIT",
                "EXECUTANT", "FR.REELS", "TPG*", "REMBOURSEMENTS"}
+
+# Détection de la société depuis le nom du fichier PDF.
+# Formats reconnus :
+#   "[2025-07-17] 08-07-2025 ARO 1090270 SALFATU..."
+#   "14-08-2026 AFG ASSURANCES 1050265 SALFATU..."
+#   "[2025-08-21] 18-08-2025 ORANGE MONEY 1127130 SALFATU..."
+FILENAME_SOCIETE_RE = re.compile(
+    r"(?:\[\d{4}-\d{2}-\d{2}\]\s+)?"    # [date] optionnel
+    r"\d{2}-\d{2}-\d{4}\s+"              # date JJ-MM-AAAA
+    r"(.+?)\s+"                           # société (lazy)
+    r"\d{6,}\s+"                          # identifiant numérique
+    r"SALFATU",                           # marqueur SALFATU
+    re.IGNORECASE
+)
+
+
+def detecter_societe(nom_pdf):
+    """Détecte la société depuis le nom du fichier PDF.
+
+    Exemples :
+        '[2025-07-17] 08-07-2025 ARO 1090270 SALFATU...'  -> 'ARO'
+        '14-08-2026 AFG ASSURANCES 1050265 SALFATU...'     -> 'AFG ASSURANCES'
+        '[2025-08-21] 18-08-2025 ORANGE MONEY 1127130 ...' -> 'ORANGE MONEY'
+    """
+    m = FILENAME_SOCIETE_RE.search(nom_pdf)
+    if m:
+        return m.group(1).strip().upper()
+    return SOCIETE  # fallback
 
 
 def sans_accent(s):
@@ -199,7 +233,7 @@ def parse_date(d):
     dd, mm, yy = d.strip().split("/")
     year = int(yy)
     year += 2000 if year < 100 else 0
-    return f"{year:04d}-{mm}-{dd}"
+    return f"{year:04d}-{int(mm):02d}-{int(dd):02d}"
 
 
 # --------------------------------------------------------------------------
@@ -417,14 +451,15 @@ def parse_bsa(pdf, nom_pdf):
             if cur:
                 blocks.append(cur)
             # nom (x<255) / acte (x>=255) dans la ligne d'en-tête ;
-            # le 1er numéro après "ADHESION:" est le matricule (déjà lu).
+            # on saute les mots jusqu'au matricule (capturé par BLOCK_RE).
             names, actes = [], []
             state = "skip"  # skip -> nom/acte après le matricule
+            matricule_word = m.group(2)
             for x0, x1, w in l["words"]:
                 if w == "Client:":
                     break
                 if state == "skip":
-                    if w.isdigit() and int(x0) > 90:
+                    if w == matricule_word and x0 > 90:
                         state = "ok"
                     continue
                 if state == "ok":
@@ -586,7 +621,7 @@ def recap_erreurs():
     """Affiche le récapitulatif des PDF en erreur (fin de traitement)."""
     if ERREURS:
         print(f"\n== {len(ERREURS)} PDF en erreur, déplacés dans "
-              f"le sous-dossier {ERREUR_DIRNAME} de {SOCIETE} ==")
+              f"le sous-dossier {ERREUR_DIRNAME} ==")
         for nom, raison in ERREURS:
             print(f"   - {nom} : {raison}")
 
@@ -677,8 +712,9 @@ def main():
             print(f"   !! ATTENTION : {len(lignes)} lignes lues, "
                   f"{meta['nb_declare']} déclarées dans le total général du relevé")
 
+        societe = detecter_societe(nom_pdf)
         out = os.path.join(dossier_annee(date_reglement, lignes),
-                           nom_sortie(SOCIETE, date_reglement, lignes, total_paye))
+                           nom_sortie(societe, date_reglement, lignes, total_paye))
         relatif = os.path.relpath(out, PDF_DIR)
         if os.path.exists(out) and not force:
             print(f"-- {relatif} : existe déjà, non écrasé "
