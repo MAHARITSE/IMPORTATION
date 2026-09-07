@@ -1,0 +1,87 @@
+BSA — relevés PDF vers Excel
+============================
+
+1. POUR LANCER
+--------------
+Double-cliquez sur :
+
+        Lancer_BSA.bat
+
+Le fichier .bat vérifie que Python est installé, installe les bibliothèques
+manquantes (une seule fois), lance la conversion, et LA FENÊTRE RESTE OUVERTE
+à la fin — y compris en cas d'erreur.
+
+Vous pouvez aussi double-cliquer directement sur BSA_PDF_vers_Excel.py :
+la fenêtre attend une touche avant de se fermer, et tout est recopié dans
+journal_BSA.txt.
+
+Déposez les relevés à convertir dans le sous-dossier :
+
+        PDF\
+
+2. CE QUI EST PRODUIT
+---------------------
+Un fichier Excel par relevé, classé par année du règlement puis année des
+soins, à côté de ce fichier :
+
+    2025\2025\08-07-25 BSA 2025 04-04-25 à 22-04-25 MONTANT 282 600Ar.xlsx
+
+    08-07-25  = date du virement (« A,le 08/07/2025 »)
+    2025      = année du virement
+    04-04-25 à 22-04-25 = période de soins remboursée
+    282 600Ar = total payé (= montant du virement)
+
+Le fichier suit le modèle Modele_Import_Reglements_Decompte_Assurance.xlsx
+(feuille Modele_Reglements, 13 colonnes).
+
+Un Excel déjà existant n'est JAMAIS écrasé (vos corrections manuelles sont
+protégées). Pour régénérer : Lancer_BSA.bat --force
+
+3. CONTRÔLES AFFICHÉS
+---------------------
+Pour chaque relevé, le script compare ce qu'il a lu avec ce que le relevé
+annonce lui-même :
+
+    contrôle : 282 600 Ar payés = montant du virement  OK
+    décompte 997712 : 282 600 Ar  OK
+    17 lignes lues (17 déclarées dans le « Total général »)
+
+Un « !! ATTENTION » ou un « !! décompte … écart … Ar » signifie qu'une ligne
+de ce relevé a été abîmée (le plus souvent par l'OCR du PDF) : les lignes
+concernées portent alors « !! montants à vérifier » dans la colonne
+Motif_Observation de l'Excel. Le montant payé de ces lignes est à corriger à
+la main dans l'Excel.
+
+4. PDF EN ERREUR
+----------------
+Un PDF impossible à convertir (scan non OCRisé, format inconnu, date de
+virement absente) est déplacé dans le sous-dossier :
+
+        ERREUR\
+
+Il n'est plus retraité ensuite. Remettez-le dans PDF\ après correction pour
+réessayer.
+
+5. JOURNAL
+----------
+journal_BSA.txt garde la trace de chaque lancement (date, PDF traités,
+contrôles, erreurs). Utile si vous fermez la fenêtre trop vite.
+
+6. EN LIGNE DE COMMANDE (facultatif)
+------------------------------------
+    python BSA_PDF_vers_Excel.py                  tous les PDF de PDF\
+    python BSA_PDF_vers_Excel.py --force          régénérer les Excel
+    python BSA_PDF_vers_Excel.py mon_releve.pdf   un seul PDF
+    python BSA_PDF_vers_Excel.py --no-pause       ne pas attendre à la fin
+
+7. SI LA FENÊTRE SE FERME ENCORE TOUTE SEULE
+--------------------------------------------
+Cela ne peut plus venir du script (il affiche l'erreur, écrit le journal et
+attend une touche). Dans ce cas :
+  - ouvrez journal_BSA.txt : la dernière session y est décrite ;
+  - vérifiez que Python est installé : dans une invite de commandes, tapez
+        py -3 --version
+    Si rien ne s'affiche, installez Python depuis https://www.python.org/downloads/
+    en cochant « Add python.exe to PATH » ;
+  - installez les bibliothèques une fois :
+        py -3 -m pip install pdfplumber openpyxl
